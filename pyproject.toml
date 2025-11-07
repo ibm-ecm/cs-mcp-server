@@ -1,0 +1,31 @@
+[project]
+name = "cs-mcp-server"
+version = "0.1.0"
+description = "ECM MCP Server for GraphQL content management"
+readme = "README.md"
+authors = [
+    { name = "David Hanson", email = "dhanson1@us.ibm.com" },
+    { name = "Anh Tran", email = "anh.tran1@ibm.com" },
+    { name = "Jane Luo", email = "janeluo@us.ibm.com" },
+    { name = "Van Vuong", email = "vanvuong1@us.ibm.com" },
+    { name = "Aditya Holikatti", email = "aditya.holikatti@ibm.com" },
+    { name = "Rytham Dawar", email = "Rytham.Dawar@ibm.com" },
+    { name = "Jonathan Lum", email = "jonlum@us.ibm.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "mcp[cli]>=1.15.0",
+    "fastmcp>=2.11.3",
+    "aiohttp>=3.8.0",
+    "pydantic>=2.0.0",
+    "requests>=2.31.0",
+    "truststore>=0.8.0",
+]
+
+[project.scripts]
+core-cs-mcp-server = "cs_mcp_server.mcp_server_main:main"
+
+[build-system]
+requires = ["uv_build>=0.8.2,<0.9.0"]
+build-backend = "uv_build"
