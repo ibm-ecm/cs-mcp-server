@@ -267,7 +267,7 @@ ZENIAM_IAM_PASSWORD=your_user_password
          "command": "uvx",
          "args": [
            "--from",
-           "git+https://github.com/ibm-ecm/cs-mcp-server",
+           "git+https://github.com/ibm-ecm/ibm-content-services-mcp-server",
            "core-cs-mcp-server"
          ],
          "env": {
@@ -371,7 +371,7 @@ For creating connections using the ADK CLI, please refer to the [official docume
 - Optionally enter a **Description** (e.g., `This MCP Server connects to FileNet Content Platform Engine, enabling content management operations.`)
 - Enter an **Install command**:
   ```
-  uvx --from git+https://github.com/ibm-ecm/cs-mcp-server core-cs-mcp-server
+  uvx --from git+https://github.com/ibm-ecm/ibm-content-services-mcp-server core-cs-mcp-server
   ```
 - Click **Connect**
 - If you see "Connection successful", click **Done**
