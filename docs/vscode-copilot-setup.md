@@ -22,7 +22,7 @@ Or:
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/ibm-ecm/cs-mcp-server",
+        "git+https://github.com/ibm-ecm/ibm-content-services-mcp-server",
         "core-cs-mcp-server"
       ],
       "env": {
@@ -64,7 +64,7 @@ To share the MCP server configuration with your project team:
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/ibm-ecm/cs-mcp-server",
+        "git+https://github.com/ibm-ecm/ibm-content-services-mcp-server",
         "core-cs-mcp-server"
       ],
       "env": {
