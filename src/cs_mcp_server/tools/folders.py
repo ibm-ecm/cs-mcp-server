@@ -105,6 +105,7 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                     pass  # Continue processing even if there are no properties
                 else:
                     try:
+                        folder_properties.eval()
                         transformed_props = folder_properties.transform_properties_dict(
                             exclude_none=True
                         )
@@ -328,6 +329,63 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 message=f"{method_name} failed: got err {e}. Trace available in server logs.",
             )
 
+    @mcp.tool(
+        name="file_document",
+    )
+    async def file_document(
+        document_id_or_path: str, folder_id_or_path: str
+    ) -> Union[str, ToolError]:
+        """
+        File a document to a folder in the content repository. This tool interfaces with the GraphQL API
+        to create a referential containment relationship between a document and a folder.
+
+        :param document_id_or_path	string	Yes	The unique identifier or path for the document.
+        :param folder_id_or_path	string	Yes	The unique identifier or path for the folder.
+
+        :returns: If successful, returns the reference containment relationship ID
+
+         Else, return a ToolError instance that describes the error.
+        """
+        method_name = "file_document"
+        try:
+            mutation = """
+                mutation FileDocument($repo: String!, $identifier: String!, $folderIdentifier: String!) {
+                    fileDocument(
+                        repositoryIdentifier: $repo
+                        identifier: $identifier
+                        folderIdentifier: $folderIdentifier
+                    ) {
+                        id
+                    }
+                }
+            """
+
+            var = {
+                "repo": graphql_client.object_store,
+                "identifier": document_id_or_path,
+                "folderIdentifier": folder_id_or_path,
+            }
+
+            response = await graphql_client.execute_async(query=mutation, variables=var)
+
+            # handling exception
+            if "errors" in response:
+                return ToolError(
+                    message=f"file_document failed: got err {response}.",
+                )
+
+            return response["data"]["fileDocument"]["id"]
+
+        except Exception as e:
+            error_traceback = traceback.format_exc(limit=TRACEBACK_LIMIT)
+            logger.error(
+                f"{method_name} failed: {e.__class__.__name__} - {str(e)}\n{error_traceback}"
+            )
+
+            return ToolError(
+                message=f"{method_name} failed: got err {e}. Trace available in server logs.",
+            )
+
     def lookup_folder_id(
         folder_name: str, graphql_client: GraphQLClient
     ) -> Union[str, ToolError]:
@@ -465,6 +523,7 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
             # Process folder properties if provided
             if folder_properties:
                 try:
+                    folder_properties.eval()
                     transformed_props = folder_properties.transform_properties_dict(
                         exclude_none=True
                     )
@@ -578,3 +637,83 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
             return ToolError(
                 message=f"{method_name} failed: got err {ex}. Trace available in server logs.",
             )
+
+    @mcp.tool(
+        name="get_folder_detail",
+    )
+    async def get_folder_detail(
+        identifier: str,
+    ) -> Union[Folder, ToolError]:
+        """
+ 
+        Description:
+        Get an existing folder in the content repository information given a folder id
+
+        :param identifier: The folder identifier (required). This can be either the folder's ID (GUID).
+        :param folder_properties: Properties to update for the folder including name, etc
+
+        :returns: If successful, returns a Folder object with its  properties.
+                 If unsuccessful, returns a ToolError with details about the failure.
+        """
+        method_name = "get_folder_detail"
+        try:
+            # Prepare the query
+            FOLDER_QUERY = """
+            query getFolder($object_store_name: String!, $folder_id: String!){
+                folder(repositoryIdentifier: $object_store_name, identifier: $folder_id){
+                    id
+                    className
+                    properties {
+                        id
+                        value
+                    }
+                }
+            }
+            """
+
+            # Prepare variables for the GraphQL query
+            variables = {
+                "object_store_name": graphql_client.object_store,  # Always use the default object store
+                "folder_id": identifier
+            }
+
+
+            # Execute the GraphQL mutation
+            logger.info("Executing folder detail retrieval")
+            response = await graphql_client.execute_async(
+                query=FOLDER_QUERY, variables=variables
+            )
+
+            # Handle errors
+            if "errors" in response:
+                logger.error("GraphQL error: %s", response["errors"])
+                return ToolError(message=f"{method_name} failed: {response['errors']}")
+
+            # Check for empty or invalid response
+            if (
+                not response
+                or "data" not in response
+                or not response["data"]
+                or "folder" not in response["data"]
+            ):
+                return ToolError(
+                    message="No folder object found",
+                    suggestions=[
+                        "Verify the folder object exists",
+                    ],
+                )    
+
+            # Create and return a folder instance from the response
+            return Folder.create_an_instance(
+                graphQL_changed_object_dict=response["data"]["folder"],
+                class_identifier=(
+                    response["data"]["folder"] if response["data"]["folder"] else DEFAULT_FOLDER_CLASS
+                ),
+            )
+
+        except Exception as e:
+            logger.error("%s failed: %s", method_name, str(e))
+            logger.error(traceback.format_exc())
+            return ToolError(
+                message=f"{method_name} failed: {str(e)}. Trace available in server logs."
+            )            

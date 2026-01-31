@@ -197,7 +197,7 @@ def discover_and_load_root_class(
             if super_class_sym_name is None:
                 break
             while True:
-                logger.debug(f"Looking at super class sym name {sys_root_class_name }")
+                logger.debug(f"Looking at super class sym name {super_class_sym_name }")
                 if super_class_sym_name in SYSTEM_ROOT_CLASS_TYPES:
                     # Found our root class
                     sys_root_class_name = super_class_sym_name
@@ -257,7 +257,7 @@ def discover_and_load_root_class(
 
         if sys_root_class_name is None:
             return ToolError(
-                message=f"Failed to discover the root class for {initial_class_name}",
+                message=f"Failed to discover the root class for {class_symbolic_name}",
                 suggestions=[
                     "Check that the class name is correct",
                     "Check that the class name is of a supported root type",

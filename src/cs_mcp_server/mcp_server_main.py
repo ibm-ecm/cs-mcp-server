@@ -17,7 +17,6 @@ MCP Server Main Module
 
 This module serves as the main entry point for the Model-Context-Protocol (MCP) server
 that integrates with a GraphQL client to provide various content management tools and services.
-It handles server initialization, tool registration, and graceful shutdown procedures.
 """
 
 # Standard library imports
@@ -38,10 +37,14 @@ from cs_mcp_server.tools.classes import register_class_tools
 from cs_mcp_server.tools.search import (
     register_search_tools,
 )
-from cs_mcp_server.tools.mcp_manage_hold import register_legalhold
+from cs_mcp_server.tools.legal_hold import register_hold_tools
 from cs_mcp_server.tools.vector_search import register_vector_search_tool
 from cs_mcp_server.tools.folders import register_folder_tools
 from cs_mcp_server.tools.annotations import register_annotation_tools
+from cs_mcp_server.tools.property_extraction import register_property_extraction_tools
+from cs_mcp_server.tools.classification import register_classification_tools
+from cs_mcp_server.resources.dynamic_resources import register_dynamic_resources
+from cs_mcp_server.tools.custom_objects import register_custom_object_tools
 
 # Configure logging with dynamic level from environment variable
 log_level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
@@ -65,6 +68,7 @@ class ServerType(str, Enum):
     CORE = "core"
     VECTOR_SEARCH = "vector-search"
     LEGAL_HOLD = "legal-hold"
+    PROPERTY_EXTRACTION_AND_CLASSIFICATION = "property-extraction-and-classification"
     FULL = "full"
 
 
@@ -124,10 +128,9 @@ def initialize_graphql_client():
     ssl_enabled = parse_ssl_flag(os.environ.get("SSL_ENABLED"), "true")
     token_ssl_enabled = parse_ssl_flag(os.environ.get("TOKEN_SSL_ENABLED"), "true")
     object_store = os.environ.get("OBJECT_STORE", "")
-    token_refresh = int(
-        os.environ.get("TOKEN_REFRESH", "1800")
-    )  # 30 minutes in seconds
+    token_refresh = int(os.environ.get("TOKEN_REFRESH", "1800"))
 
+    locale = os.environ.get("LOCALE", "")
     # OAuth specific parameters
     token_url = os.environ.get("TOKEN_URL", "")
     grant_type = os.environ.get("GRANT_TYPE", "")
@@ -181,6 +184,7 @@ def initialize_graphql_client():
         client_id=client_id,
         client_secret=client_secret,
         timeout=timeout,
+        locale=locale,
         pool_connections=pool_connections,
         pool_maxsize=pool_maxsize,
         token_refresh=token_refresh,
@@ -195,6 +199,36 @@ def initialize_graphql_client():
         ZenIAM_zen_url=zeniam_zen_url,
         ZenIAM_zen_exchange_ssl=zeniam_zen_exchange_ssl,
     )
+
+
+def register_server_resources(
+    graphql_client: GraphQLClient,
+    server_type: ServerType,
+) -> None:
+    """
+    Register resources based on the server type.
+
+    Resources provide read-only access to data and content for LLM context.
+
+    Args:
+        graphql_client: The initialized GraphQL client
+        metadata_cache: The metadata cache instance
+        server_type: The type of server (ServerType enum)
+    """
+    # Ensure mcp is initialized (type narrowing for type checker)
+    assert mcp is not None
+
+    logger.info("Registering resources for %s server", server_type.value)
+
+    # Register resources based on server type
+    # Resources are registered for CORE and FULL server types
+    if server_type in (ServerType.CORE, ServerType.FULL):
+        # Get dynamic resources folder path from environment
+        dynamic_resources_folder = os.environ.get("RESOURCES_FOLDER", "/resources")
+
+        register_dynamic_resources(mcp, graphql_client, dynamic_resources_folder)
+
+        logger.info("Resources registered")
 
 
 def register_server_tools(
@@ -222,6 +256,7 @@ def register_server_tools(
         register_class_tools(mcp, graphql_client, metadata_cache)
         register_search_tools(mcp, graphql_client, metadata_cache)
         register_annotation_tools(mcp, graphql_client)
+        register_custom_object_tools(mcp, graphql_client)
         logger.info("Core tools registered")
 
     elif server_type == ServerType.VECTOR_SEARCH:
@@ -229,8 +264,13 @@ def register_server_tools(
         logger.info("Vector search tools registered")
 
     elif server_type == ServerType.LEGAL_HOLD:
-        register_legalhold(mcp, graphql_client)
+        register_hold_tools(mcp, graphql_client)
         logger.info("Legal hold tools registered")
+
+    elif server_type == ServerType.PROPERTY_EXTRACTION_AND_CLASSIFICATION:
+        register_property_extraction_tools(mcp, graphql_client, metadata_cache)
+        register_classification_tools(mcp, graphql_client, metadata_cache)
+        logger.info("Property extraction and classification tools registered")
 
     elif server_type == ServerType.FULL:
         register_document_tools(mcp, graphql_client, metadata_cache)
@@ -238,8 +278,11 @@ def register_server_tools(
         register_class_tools(mcp, graphql_client, metadata_cache)
         register_search_tools(mcp, graphql_client, metadata_cache)
         register_annotation_tools(mcp, graphql_client)
+        register_custom_object_tools(mcp, graphql_client)
         register_vector_search_tool(mcp, graphql_client)
         register_legalhold(mcp, graphql_client)
+        register_property_extraction_tools(mcp, graphql_client, metadata_cache)
+        register_classification_tools(mcp, graphql_client, metadata_cache)
         logger.info("All tools registered")
 
     else:
@@ -278,7 +321,9 @@ def _run_server(server_type: ServerType) -> None:
     metadata_cache = MetadataCache()
     logger.info("Metadata cache created successfully")
 
-    # Register tools for this server type
+    register_server_resources(graphql_client, server_type)
+    logger.info("Resources registered for %s server", server_type.value)
+
     register_server_tools(graphql_client, metadata_cache, server_type)
     logger.info("Tools registered for %s server", server_type.value)
 
@@ -321,6 +366,11 @@ def main_vector_search() -> None:
 def main_legal_hold() -> None:
     """Entry point for legal hold MCP server."""
     _run_server(ServerType.LEGAL_HOLD)
+
+
+def main_property_extraction_and_classification() -> None:
+    """Entry point for property extraction and classification MCP server."""
+    _run_server(server_type=ServerType.PROPERTY_EXTRACTION_AND_CLASSIFICATION)
 
 
 def main() -> None:

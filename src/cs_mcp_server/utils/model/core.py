@@ -343,3 +343,62 @@ class Annotation(BaseModel):
 
         # TODO: Content Elements is a list of dictionary.. Might need to define structure for return
         return cls(**annotation_data)
+
+        
+class CustomObject (BaseModel):
+    """Pydantic CustomObject class for the MCP server."""
+
+    class_name: Optional[str] = Field(
+        default="CustomObject", description="Class name of the CustomObject"
+    )
+    creator: Optional[str] = Field(
+        default=None, description="The creator of the custom object"
+    )
+    date_created: Optional[datetime] = Field(
+        default=None, description="Creation timestamp"
+    )
+    date_last_modified: Optional[datetime] = Field(
+        default=None, description="Last modification timestamp"
+    )
+    id: str = Field(description="The id of the custom object")
+    name: Optional[str] = Field(default=None, description="The name of the custom object")
+    owner: Optional[str] = Field(
+        default=None, description="The owner of the custom object"
+    )
+
+
+
+    @classmethod
+    def create_an_instance(
+        cls, graphQL_changed_object_dict: dict, class_name: str = "CustomObject"
+    ):
+        """Create a Pydantic CustomObject instance from a GraphQL CustomObject"""
+
+        custom_object_data = {"class_name": class_name, "id": None}
+
+        # for now, define a mapping of field names returned from the GraphQL API to the field names in the pydantic model
+        # instead of write some method to transform field names. Reason: Decoupling. Pydantic model is returned to LLM and test, so
+        # in case GraghQL API changes, we don't want to change the pydantic model and upstream test.
+        graphQL_to_pydantic_field_name_map: dict[str, str] = {
+            "id": "id",
+            "creator": "creator",
+            "dateCreated": "date_created",
+            "dateLastModified": "date_last_modified",
+            "name": "name",
+            "owner": "owner",
+        }
+        required_fields = ["id"]
+
+        for name in graphQL_to_pydantic_field_name_map:
+            if name in graphQL_changed_object_dict:
+                custom_object_data[graphQL_to_pydantic_field_name_map[name]] = (
+                    graphQL_changed_object_dict[name]
+                )
+            elif name in required_fields:
+                raise ValueError(
+                    f"CustomObject: Missing required property '{name}' in GraphQL response"
+                )
+
+        return cls(**custom_object_data)
+
+        

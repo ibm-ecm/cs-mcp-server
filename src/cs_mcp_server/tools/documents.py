@@ -39,6 +39,9 @@ from cs_mcp_server.utils.constants import (
     EXCLUDED_PROPERTY_NAMES,
 )
 
+from cs_mcp_server.utils.utils import get_class_specific_property_names
+from cs_mcp_server.utils.utils import get_document_text_extract_content
+
 # Logger for this module
 logger = logging.getLogger(__name__)
 
@@ -60,9 +63,10 @@ def register_document_tools(
         :returns: A dictionary containing the version series details, including:
             - versionSeries (dict): A dictionary containing version series details, including:
                 - versions (list): A list of all versions in the series, with each version containing:
-                    - majorVersionNumber (int): The major version number. The format to print out version number is majorVersionNumber.minorVersionNumber.
-                    - minorVersionNumber (int): The minor version number. The format to print out version number is majorVersionNumber.minorVersionNumber.
-                    - id (str): The unique identifier of the version's document id.
+                    - versionables (list): A list of versionable objects, each containing:
+                        - majorVersionNumber (int): The major version number. The format to print out version number is majorVersionNumber.minorVersionNumber.
+                        - minorVersionNumber (int): The minor version number. The format to print out version number is majorVersionNumber.minorVersionNumber.
+                        - id (str): The unique identifier of the version's document id.
         """
         query = """
         query getDocumentVersions($object_store_name: String!, $identifier: String!){
@@ -104,79 +108,9 @@ def register_document_tools(
                  If multiple text extracts are found, they will be concatenated.
                  Returns an empty string if no text extract is found.
         """
-        query = """
-        query getDocumentTextExtract($object_store_name: String!, $identifier: String!) {
-            document(repositoryIdentifier: $object_store_name, identifier: $identifier) {
-                annotations{
-                    annotations{
-                        id
-                        name
-                        className
-                        annotatedContentElement
-                        descriptiveText
-                        contentElements{
-                            ... on ContentTransfer{
-                                downloadUrl
-                                retrievalName
-                                contentSize
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        """
-
-        variables = {
-            "identifier": identifier,
-            "object_store_name": graphql_client.object_store,
-        }
-
-        # First run execute_async and wait for the result
-        result = await graphql_client.execute_async(query=query, variables=variables)
-
-        # Initialize an empty string to store all text content
-        all_text_content = ""
-
-        # Check if we have a valid result with annotations
-        if (
-            result
-            and "data" in result
-            and result["data"]
-            and "document" in result["data"]
-            and result["data"]["document"]
-            and "annotations" in result["data"]["document"]
-            and result["data"]["document"]["annotations"]
-            and "annotations" in result["data"]["document"]["annotations"]
-        ):
-            annotations = result["data"]["document"]["annotations"]["annotations"]
-
-            # Process each annotation
-            for annotation in annotations:
-                if (
-                    "contentElements" in annotation
-                    and annotation["className"] == TEXT_EXTRACT_ANNOTATION_CLASS
-                    and annotation["annotatedContentElement"] is not None
-                ):
-                    # Process each content element
-                    for content_element in annotation["contentElements"]:
-                        if (
-                            "downloadUrl" in content_element
-                            and content_element["downloadUrl"]
-                        ):
-                            # Download the text content using the downloadUrl
-                            download_url = content_element["downloadUrl"]
-                            text_content = await graphql_client.download_text_async(
-                                download_url
-                            )
-
-                            # Append the text content to our result string
-                            if text_content:
-                                if all_text_content:
-                                    all_text_content += TEXT_EXTRACT_SEPARATOR
-                                all_text_content += text_content
-
-        return all_text_content
+        return await get_document_text_extract_content(
+            graphql_client=graphql_client, identifier=identifier
+        )
 
     @mcp.tool(
         name="create_document",
@@ -197,11 +131,11 @@ def register_document_tools(
         Description:
         Creates a document in the content repository with specified properties.
 
-        :param classIdentifier: The class identifier for the document. If not provided, defaults to "Document".
+        :param class_identifier: The class identifier for the document. If not provided, defaults to "Document".
         :param id: The unique GUID for the document. If not provided, a new GUID with curly braces will be generated.
-        :param documentProperties: Properties for the document including name, content, mimeType, etc.
-        :param fileInFolderIdentifier: The identifier or path of the folder to file the document in. This always starts with "/".
-        :param checkinAction: Check-in action parameters. CheckinMinorVersion should always be included.
+        :param document_properties: Properties for the document including name, content, mimeType, etc.
+        :param file_in_folder_identifier: The identifier or path of the folder to file the document in. This always starts with "/".
+        :param checkin_action: Check-in action parameters. CheckinMinorVersion should always be included.
         :param file_paths: Optional list of file paths to upload as the document's content.
 
         :returns: If successful, returns a Document object with its properties.
@@ -273,6 +207,7 @@ def register_document_tools(
             # Process document properties if provided
             if document_properties:
                 try:
+                    document_properties.eval()
                     transformed_props = document_properties.transform_properties_dict(
                         exclude_none=True
                     )
@@ -326,87 +261,6 @@ def register_document_tools(
             )
 
     @mcp.tool(
-        name="get_class_specific_properties_name",
-    )
-    async def get_class_specific_properties_name(
-        identifier: str,
-    ) -> Union[dict, list, ToolError]:
-        """
-        Retrieves a list of class-specific property names for a document based on its class definition.
-
-        This tool first determines the document's class, then fetches the class metadata to identify
-        all available properties specific to that document class. It filters out system properties and
-        hidden properties.
-
-        Use this tool when you need to know what custom properties are available for a specific document,
-        which can then be used for targeted property extraction or search operations.
-
-        :param identifier: The document id or path (required). This can be either the document's ID (GUID)
-                          or its path in the repository (e.g., "/Folder1/document.pdf").
-
-        :returns: A list of property display names that are available for the document's class.
-                 These properties can be used for further operations like property extraction or search.
-        """
-        # First, get the class name of the document
-        query = """
-        query getDocument($object_store_name: String!, $identifier: String!){
-            document(repositoryIdentifier: $object_store_name, identifier: $identifier){
-                className
-            }
-        }
-        """
-
-        var: dict[str, Any] = {
-            "identifier": identifier,
-            "object_store_name": graphql_client.object_store,
-        }
-
-        response = graphql_client.execute(query=query, variables=var)
-
-        if "errors" in response:
-            return response
-
-        classname = response["data"]["document"]["className"]
-
-        # Use get_class_metadata_tool to get the class properties
-        class_metadata = get_class_metadata_tool(
-            graphql_client=graphql_client,
-            class_symbolic_name=classname,
-            metadata_cache=metadata_cache,
-        )
-
-        if isinstance(class_metadata, ToolError):
-            return class_metadata
-
-        # Apply the same filtering logic as the original implementation
-        property_list = []
-        not_allowed_cardinality = [Cardinality.ENUM]
-        not_allowed_data_type = [TypeID.OBJECT, TypeID.BINARY]
-        not_include_property_name = EXCLUDED_PROPERTY_NAMES
-
-        try:
-            for prop in class_metadata.property_descriptions:
-                if (
-                    prop.data_type in not_allowed_data_type
-                    or prop.cardinality in not_allowed_cardinality
-                    or prop.symbolic_name in not_include_property_name
-                    or prop.is_system_owned is True
-                    or prop.is_hidden is True
-                ):
-                    continue
-                property_list.append(prop.display_name)
-        except Exception as e:
-            return ToolError(
-                message=f"Error processing property descriptions: {e}",
-                suggestions=[
-                    "Make sure the class exists",
-                    "Check if the metadata cache is properly initialized",
-                ],
-            )
-
-        return property_list
-
-    @mcp.tool(
         name="update_document_properties",
     )
     async def update_document_properties(
@@ -414,8 +268,9 @@ def register_document_tools(
         document_properties: Optional[DocumentPropertiesInput] = None,
     ) -> Union[Document, ToolError]:
         """
-        **PREREQUISITES IN ORDER**: To use this tool, you MUST call get_class_property_descriptions first
-        to get a list of valid properties for the document's current class.
+        **PREREQUISITES**: Before using this tool, you MUST call ONE of these tools first:
+        1. property_extraction - For content based property extraction workflows (provides class specific property names and document text content for AI-based extraction)
+        2. get_class_property_descriptions - For general property updates (provides full property metadata including data types, cardinality, etc.)
 
         Description:
         Updates an existing document's properties in the content repository.
@@ -461,6 +316,7 @@ def register_document_tools(
             # Process document properties if provided
             if document_properties:
                 try:
+                    document_properties.eval()
                     transformed_props = document_properties.transform_properties_dict(
                         exclude_none=True
                     )
@@ -504,8 +360,9 @@ def register_document_tools(
         class_identifier: str,
     ) -> Union[Document, ToolError]:
         """
-        **PREREQUISITES IN ORDER**: To use this tool, you MUST call determine_class first
-        to get the new class_identifier.
+        **PREREQUISITES**: Before using this tool, you MUST call ONE of these tools first:
+        1. list_all_classes - Call this tool only IF IT EXISTS and the user is using a (re)classification workflow where we need highest accuracy.
+        2. determine_class - For general class update.
 
         Description:
         Changes a document's class in the content repository.
@@ -662,6 +519,7 @@ def register_document_tools(
             # Process document properties if provided
             if document_properties:
                 try:
+                    document_properties.eval()
                     transformed_props = document_properties.transform_properties_dict(
                         exclude_none=True
                     )
@@ -781,6 +639,7 @@ def register_document_tools(
             # Process document properties if provided
             if document_properties:
                 try:
+                    document_properties.eval()
                     transformed_props = document_properties.transform_properties_dict(
                         exclude_none=True
                     )

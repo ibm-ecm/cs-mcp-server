@@ -1,22 +1,61 @@
-# IBM Core Content Services MCP Server
+# IBM Content Services MCP Server
 
 ## Overview
 
-The Core Content Services MCP Server provides a standardized interface that enables IBM FileNet Content Manager (FNCM) capabilities to be used by AI models.  This MCP Server enables you to:
+The IBM Content Services MCP Server provides a standardized interface that enables IBM FileNet Content Manager (FNCM) capabilities to be used by AI models. The server is available in three specialized configurations to support different workflows:
 
-- Manage documents stored within FNCM through AI Agents, including document creation and deletion
-- Perform updates to documents such as check in, check out, and property updates
-- Search for objects such as documents and folders
-- Manage folders and file / un-file documents in folders
-- Manage document classes, folder classes, and more
+- **Core Server**: Comprehensive document and content management operations
+- **Property Extraction and Classification Server (Preview)**: AI-powered document analysis and classification
+- **Legal Hold Server (Preview)**: Legal hold and compliance management
+
+Each server can be deployed independently or in combination to support your specific use cases.
+
+---
+
+## Server Types and Capabilities
+
+### Core Server (`core-cs-mcp-server`)
+
+**Purpose**: Comprehensive document and content management operations
+
+**Use Cases**:
+- General document lifecycle management (create, update, check-in, check-out, delete)
+- Folder operations and document filing
+- Search and retrieval across the repository
+- Metadata and class management
+- Document annotations
+- Resources support for exposing documents as LLM context
+
+### Property Extraction and Classification Server (`property-extraction-and-classification-cs-mcp-server`) - Preview
+
+**Purpose**: AI-powered document analysis and classification
+
+**Dependencies**: Requires Core Server for document update operations (e.g., `update_document_properties`)
+
+**Use Cases**:
+- Automated property extraction from document content
+- Document classification and reclassification workflows
+- Content-based metadata enrichment
+
+### Legal Hold Server (`legal-hold-cs-mcp-server`) - Preview
+
+**Purpose**: Legal hold and compliance management
+
+**Use Cases**:
+- Creating and managing legal holds
+- Placing documents and objects under hold
+- Tracking held objects
+- Compliance and litigation support workflows
 
 ---
 
 ## Tools List
 
-The Core Content Services MCP Server provides the following tools for interacting with FileNet Content Platform Engine (CPE):
+### Core Server Tools
 
-### Document Management
+The Core Server provides 28 tools organized into the following categories:
+
+#### Document Management (11 tools)
 
 - **get_document_versions**: Retrieves a document's version history, including major and minor version numbers and document IDs for each version.
 
@@ -36,13 +75,11 @@ The Core Content Services MCP Server provides the following tools for interactin
 
 - **get_document_properties**: Retrieves a document from the content repository by ID or path, returning the document object with its properties.
 
-- **get_class_specific_properties_name**: Retrieves a list of class-specific property names for a document based on its class definition. Filters out system properties and hidden properties.
-
 - **delete_document_version**: Deletes a specific document version in the content repository using its document ID.
 
 - **delete_version_series**: Deletes an entire version series (all versions of a document) in the content repository using the version series ID.
 
-### Folder Management
+#### Folder Management (7 tools)
 
 - **create_folder**: Creates a new folder in the content repository with specified name, parent folder, and optional class identifier.
 
@@ -50,21 +87,23 @@ The Core Content Services MCP Server provides the following tools for interactin
 
 - **unfile_document**: Removes a document from a folder without deleting the document itself.
 
+- **file_document**: Files a document into a folder.
+
 - **update_folder**: Updates an existing folder's properties. Requires first calling determine_class and get_class_property_descriptions.
 
 - **get_folder_documents**: Get documents contained in a folder.
 
-### Metadata
+- **get_folder_detail**: Retrieves detailed information about a folder.
+
+#### Class/Metadata Management (3 tools)
 
 - **list_root_classes**: Lists root classes.
-
-- **list_all_classes**: Lists all classes of a specific root class in the repository.
 
 - **determine_class**: Determines the appropriate class based on the available classes and the content of the user's message or context document.
 
 - **get_class_property_descriptions**: Retrieves detailed descriptions of all properties for a specified class.
 
-### Search
+#### Search (4 tools)
 
 - **get_searchable_property_descriptions**: Retrieves descriptions of properties that can be used in search operations.
 
@@ -74,15 +113,94 @@ The Core Content Services MCP Server provides the following tools for interactin
 
 - **lookup_documents_by_path**: Searches for documents based on their location in the folder hierarchy. Matches keywords against folder names and document containment names at each path level. Particularly useful when the user describes a document using path separators (e.g., "/Folder1/Subfolder/document").
 
-### Annotations
+#### Annotations (2 tools)
 
 - **get_document_annotations**: Retrieves all annotations associated with a document, including their IDs, names, descriptive text, and content elements.
+
+- **get_annotation**: Retrieves a specific annotation by its ID.
+
+#### Custom Objects (1 tool)
+
+- **get_custom_object**: Retrieves a custom object from the repository by ID or path.
+
+### Property Extraction and Classification Server Tools (Preview)
+
+The Property Extraction and Classification Server provides 2 specialized tools for AI-powered document workflows:
+
+- **property_extraction**: Extracts document class, properties metadata, and text content for AI-based property value extraction. This tool determines the document's class, fetches class metadata to identify all available properties (filtering out system and hidden properties), and retrieves the document's text extract content.
+
+- **list_all_classes**: Lists all available classes for a specific root class type. Essential for document reclassification workflows where you need to match document content to the most appropriate class.
+
+### Legal Hold Server Tools (Preview)
+
+The Legal Hold Server provides 6 tools for legal compliance management:
+
+- **create_hold**: Creates a new legal hold with a specified display name.
+
+- **delete_hold**: Removes a legal hold and releases all held objects.
+
+- **add_object_to_hold**: Places an object (document, folder, etc.) under a legal hold.
+
+- **delete_object_from_hold**: Removes an object from a legal hold without deleting the hold itself.
+
+- **get_held_objects_for_hold**: Lists all objects currently under a specific legal hold.
+
+- **get_holds_by_name**: Searches for legal holds by their display name.
+
+---
+
+## Resources (Core Server Only)
+
+### What are Resources?
+
+Resources provide read-only access to document content for LLM context. Documents in a configured folder are automatically exposed as MCP resources, allowing AI models to reference them during conversations without explicit tool calls.
+
+> **Note:** Resources functionality requires the **Persistent Text Extract Add-on** to be installed in your object store to retrieve document content. See the [Prerequisites](#prerequisites) section for installation details.
+
+### Configuration
+
+Set the `RESOURCES_FOLDER` environment variable to specify the folder path in your object store where resource documents should be uploaded:
+
+```bash
+RESOURCES_FOLDER=/resources  # Default value - this is the folder path in the object store
+```
+
+The `RESOURCES_FOLDER` value is the path of the folder in your FileNet object store where you should upload your resource documents. The server will automatically discover and register all documents in this folder.
+
+Documents in this folder will be:
+- Automatically registered as resources when the Core server starts
+- Available to the LLM with URIs following the pattern: `ibm-cs://{object_store}/documents/{folder_path}/{document_name}`
+- Displayed with names in the format: `[IBM CS] {document_name}`
+
+### Security Guidelines
+
+**Access Control:** The resources folder should only be modifiable by administrative users to prevent tampering with content that will be used by AI models. Configure appropriate folder permissions in your FileNet object store to:
+- Restrict write/modify access to administrators only
+- Allow read access for the MCP server business user
+- Prevent unauthorized users from adding, modifying, or deleting resource documents
+
+### Use Cases
+
+Resources are ideal for providing AI models with reference documentation:
+- Policy documents for compliance guidance
+- Classification guidelines for document categorization
+- Standard operating procedures
+- Regulatory requirements
+- Best practices documentation
+
+### Example
+
+If you set `RESOURCES_FOLDER=/policies` and have documents in that folder:
+- `/policies/data_classification_policy.txt`
+- `/policies/retention_policy.txt`
+
+These documents will be available as resources that the AI can reference when answering questions or making decisions.
 
 ---
 
 ## Tested Environments
 
-The Core Content Services MCP Server has been tested with the following MCP client and LLM combinations:
+The Content Services MCP Servers have been tested with the following MCP client and LLM combinations:
 - **Claude Desktop**: Sonnet 4.5, 4, 3.5 and Haiku 4.5
 - **Watsonx Orchestrate**: Llama-3-2-90b-vision-instruct
 
@@ -98,7 +216,7 @@ Some MCP clients have limitations that affect which tools can be used. The follo
 
 | MCP Client | Limitation | Affected Tools |
 |------------|------------|----------------|
-| Watson Orchestrate | Does not support complex Pydantic classes as inputs. Consequently you won't be able to create or modify documents or folders. You are limited to view only actions. | • `create_document`<br>• `update_document_properties`<br>• `checkout_document`<br>• `checkin_document`<br>• `update_folder`<br>• `repository_object_search` |
+| Watson Orchestrate | Does not support complex Pydantic classes as input | • `create_document`<br>• `update_document_properties`<br>• `checkout_document`<br>• `checkin_document`<br>• `update_folder`<br>• `repository_object_search` |
 | Watson Orchestrate | Sporadic 'Invalid tool call object' error when agent tries to invoke MCP tools | • `create_document`<br>• `checkin_document`<br>• `checkout_document`<br>• `get_document_versions`<br>• `repository_object_search` |
 
 > **Note:** These limitations are due to the MCP client's input handling capabilities, not the MCP server itself.
@@ -116,12 +234,13 @@ Some MCP clients have limitations that affect which tools can be used. The follo
 - Access to a FileNet CPE server with Content Services GraphQL API (CS-GQL) installed
 - **Persistent Text Extract Add-on** must be installed in your object store if you want to use document content retrieval functionality
   - This add-on enables the extraction and storage of text content from documents
-  - Without this add-on, the `get_document_text_extract` tool will not return document content
+  - Required for: Core Server's `get_document_text_extract` tool, Resources functionality, and Property Extraction Server's `property_extraction` tool
+  - Without this add-on, these features will not return document content
   - For installation instructions, refer to the [IBM Documentation on Installing the Persistent Text Add-on](https://www.ibm.com/docs/en/content-assistant?topic=extraction-installing-persistent-text-add)
 
 ### Configuration
 
-The Core Content Services MCP Server requires several environment variables to connect to your FileNet CPE server:
+The Content Services MCP Servers require several environment variables to connect to your FileNet CPE server:
 
 #### Required Environment Variables
 
@@ -148,6 +267,7 @@ The Core Content Services MCP Server requires several environment variables to c
 | `POOL_CONNECTIONS` | Number of connection pool connections | `100` |
 | `POOL_MAXSIZE` | Maximum pool size | `100` |
 | `LOG_LEVEL` | Logging level for the server. Valid values: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` | `INFO` |
+| `RESOURCES_FOLDER` | **Core Server only.** Folder path in the repository containing documents to expose as MCP resources. Documents in this folder will be automatically registered as resources with URIs following the pattern `ibm-cs://{object_store}/documents/{folder_path}/{document_name}`. Resource names will be displayed as `[IBM CS] {document_name}` in MCP clients. Requires Persistent Text Extract Add-on. | `/resources` |
 
 #### Cloud Pak for Business Automation Environment Variables
 
@@ -281,6 +401,56 @@ ZENIAM_IAM_PASSWORD=your_user_password
    }
    ```
 
+   **Option 3: Multi-Server Setup (Core + Property Extraction + Legal Hold)**
+   ```json
+   {
+     "mcpServers": {
+       "core-cs-mcp-server": {
+         "command": "uvx",
+         "args": [
+           "--from",
+           "git+https://github.com/ibm-ecm/ibm-content-services-mcp-server",
+           "core-cs-mcp-server"
+         ],
+         "env": {
+           "USERNAME": "your_username",
+           "PASSWORD": "your_password",
+           "SERVER_URL": "https://your-graphql-server/content-services-graphql/graphql",
+           "OBJECT_STORE": "your_object_store"
+         }
+       },
+       "property-extraction-cs-mcp-server": {
+         "command": "uvx",
+         "args": [
+           "--from",
+           "git+https://github.com/ibm-ecm/ibm-content-services-mcp-server",
+           "property-extraction-and-classification-cs-mcp-server"
+         ],
+         "env": {
+           "USERNAME": "your_username",
+           "PASSWORD": "your_password",
+           "SERVER_URL": "https://your-graphql-server/content-services-graphql/graphql",
+           "OBJECT_STORE": "your_object_store"
+         }
+       },
+       "legal-hold-cs-mcp-server": {
+         "command": "uvx",
+         "args": [
+           "--from",
+           "git+https://github.com/ibm-ecm/ibm-content-services-mcp-server",
+           "legal-hold-cs-mcp-server"
+         ],
+         "env": {
+           "USERNAME": "your_username",
+           "PASSWORD": "your_password",
+           "SERVER_URL": "https://your-graphql-server/content-services-graphql/graphql",
+           "OBJECT_STORE": "your_object_store"
+         }
+       }
+     }
+   }
+   ```
+
 4. Restart Claude Desktop:
    - Simply closing the window is not enough, Claude Desktop must be stopped and restarted:
      - on macOS: Claude > Quit
@@ -297,7 +467,14 @@ ZENIAM_IAM_PASSWORD=your_user_password
 
 #### Watson Orchestrate (WxO) Configuration
 
-This section explains how to augment IBM watsonx Orchestrate with the Core Content Services MCP Server, enabling watsonx Orchestrate to interact with IBM FileNet Content Management during user interactions in a chat.
+This section explains how to augment IBM watsonx Orchestrate with the Content Services MCP Servers, enabling watsonx Orchestrate to interact with IBM FileNet Content Management during user interactions in a chat.
+
+You can configure one or multiple servers depending on your needs:
+- **Core Server**: For general document management operations
+- **Property Extraction and Classification Server**: For AI-powered document analysis (requires Core Server for document updates)
+- **Legal Hold Server**: For legal compliance workflows
+
+The configuration steps below use the Core Server as an example, but the same process applies to other servers by changing the server name and install command.
 
 ##### Configuration
 
@@ -373,6 +550,17 @@ For creating connections using the ADK CLI, please refer to the [official docume
   ```
   uvx --from git+https://github.com/ibm-ecm/ibm-content-services-mcp-server core-cs-mcp-server
   ```
+  
+  **For other servers, use these install commands:**
+  - Property Extraction and Classification Server:
+    ```
+    uvx --from git+https://github.com/ibm-ecm/ibm-content-services-mcp-server property-extraction-and-classification-cs-mcp-server
+    ```
+  - Legal Hold Server:
+    ```
+    uvx --from git+https://github.com/ibm-ecm/ibm-content-services-mcp-server legal-hold-cs-mcp-server
+    ```
+
 - Click **Connect**
 - If you see "Connection successful", click **Done**
 
@@ -417,26 +605,50 @@ Click **Show Reasoning** in any response to see the details of the operations pe
 
 ## Usage
 
-### Running the Server Directly
+### Running Servers Directly
 
-If you have a local copy of the repository, you can run the server directly with:
+If you have a local copy of the repository, you can run any server directly with environment variables:
 
+**Core Server:**
 ```bash
-USERNAME=your_username PASSWORD=your_password SERVER_URL=https://your-graphql-server/content-services-graphql/graphql OBJECT_STORE=your_object_store /path/to/your/uvx --from /path/to/your/cs-mcp-server core-cs-mcp-server
+USERNAME=your_username PASSWORD=your_password SERVER_URL=https://your-graphql-server/content-services-graphql/graphql OBJECT_STORE=your_object_store uvx --from /path/to/your/cs-mcp-server core-cs-mcp-server
+```
+
+**Property Extraction and Classification Server:**
+```bash
+USERNAME=your_username PASSWORD=your_password SERVER_URL=https://your-graphql-server/content-services-graphql/graphql OBJECT_STORE=your_object_store uvx --from /path/to/your/cs-mcp-server property-extraction-and-classification-cs-mcp-server
+```
+
+**Legal Hold Server:**
+```bash
+USERNAME=your_username PASSWORD=your_password SERVER_URL=https://your-graphql-server/content-services-graphql/graphql OBJECT_STORE=your_object_store uvx --from /path/to/your/cs-mcp-server legal-hold-cs-mcp-server
 ```
 
 ### Integration with AI Agents
 
-The Core Content Services MCP Server can be integrated with AI Agents that support the MCP protocol. This allows the AI Agent to:
+The Content Services MCP Servers can be integrated with AI Agents that support the MCP protocol. Depending on which server(s) you deploy, the AI Agent can:
 
+**Core Server capabilities:**
 1. Access and retrieve document properties
 2. Extract text from documents
 3. Create, update, check-in, and check-out documents
 4. Manage folders and document classifications
 5. Execute searches
 6. Get document annotations
+7. Access resources for LLM context
 
-### Example Workflow
+**Property Extraction and Classification Server capabilities:**
+1. Extract property values from document content using AI
+2. List and match document classes for reclassification
+
+**Legal Hold Server capabilities:**
+1. Create and manage legal holds
+2. Place objects under hold
+3. Track and query held objects
+
+### Example Workflows
+
+#### Core Server Workflow: Search and Document Management
 
 1. **Search and Discovery**:
    - Users typically start with descriptive information (name, content, keywords) rather than IDs
@@ -465,6 +677,40 @@ The Core Content Services MCP Server can be integrated with AI Agents that suppo
    - Folders can be identified by path or by ID from search results
    - Documents can be filed/unfiled using both document and folder IDs
 
+#### Property Extraction and Classification Workflow
+
+**Requires:** Core Server (for document updates)
+
+1. **Property Extraction**:
+   - Use `property_extraction` tool with a document ID
+   - The tool returns:
+     - Document class information
+     - All available properties for that class (excluding system/hidden properties)
+     - Document text content
+   - AI analyzes the text and extracts appropriate property values
+   - Use Core Server's `update_document_properties` to save the extracted values
+
+2. **Document Classification**:
+   - Use `list_all_classes` to get all available document classes
+   - AI analyzes document content and matches it to the most appropriate class
+   - Use Core Server's `update_document_class` to reclassify the document
+
+#### Legal Hold Workflow
+
+1. **Creating a Hold**:
+   - Use `create_hold` with a descriptive name (e.g., "Litigation ABC vs XYZ")
+   - Returns the hold object with its ID
+
+2. **Placing Objects Under Hold**:
+   - Identify documents using Core Server search tools (if needed)
+   - Use `add_object_to_hold` with the hold ID and object ID
+   - Repeat for all relevant documents/objects
+
+3. **Managing Holds**:
+   - Use `get_holds_by_name` to find holds by name
+   - Use `get_held_objects_for_hold` to see all objects under a specific hold
+   - Use `delete_object_from_hold` to release specific objects
+   - Use `delete_hold` to remove the hold entirely (releases all objects)
 
 > **Note:** Most operations that modify or access specific objects require an object ID, which is typically obtained through a search operation first. This workflow pattern ensures users can work with objects by their meaningful attributes rather than requiring them to know technical identifiers upfront.
 
@@ -475,7 +721,7 @@ The Core Content Services MCP Server can be integrated with AI Agents that suppo
 See the [LICENSE](LICENSE) file for details.
 
 ```
-# Copyright contributors to the IBM Core Content Services MCP Server project
+# Copyright contributors to the IBM Content Services MCP Server project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.

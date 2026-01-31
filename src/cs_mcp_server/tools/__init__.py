@@ -21,10 +21,13 @@ This module exports all tool registration functions from the tools directory.
 # Import all registration functions to make them available when importing from this package
 from .classes import register_class_tools
 from .search import register_search_tools
-from .mcp_manage_hold import register_legalhold
+from .legal_hold import register_hold_tools
 from .vector_search import register_vector_search_tool
+from .property_extraction import register_property_extraction_tools
+from .annotations import register_annotation_tools
 from .documents import register_document_tools
 from .folders import register_folder_tools
+from .custom_objects import register_custom_object_tools
 
 
 # Define __all__ to specify what gets imported with "from tools import *"
@@ -32,7 +35,10 @@ __all__ = [
     "register_class_tools",
     "register_document_tools",
     "register_search_tools",
-    "register_legalhold",
+    "register_hold_tools",
     "register_vector_search_tool",
+    "register_property_extraction_tools",
+    "register_annotation_tools",
     "register_folder_tools",
+    "register_custom_object_tools",
 ]

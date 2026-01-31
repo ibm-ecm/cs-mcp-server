@@ -33,7 +33,7 @@ from .common import (
     CachePropertyDescriptionInteger32Data,
     CachePropertyDescriptionStringData,
 )
-from .model.admin import HoldRelationship
+from .model.admin import HoldRelationship, Hold
 from .model.propertyBase import TypeID, Cardinality
 from .model.core import Document, Annotation
 from .model.coreInput import (
@@ -80,6 +80,7 @@ __all__ = [
     "CachePropertyDescriptionIdData",
     "CachePropertyDescriptionInteger32Data",
     "CachePropertyDescriptionStringData",
+    "Hold",
     "HoldRelationship",
     "Document",
     "Annotation",

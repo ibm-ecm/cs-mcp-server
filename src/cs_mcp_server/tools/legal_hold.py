@@ -13,101 +13,120 @@
 # limitations under the License.
 
 """
-mcp_manage_hold.py module define all MCP tools that provide legal hold functionality.
+legal_hold.py module define all MCP tools that provide legal hold functionality.
 
 """
 
 import logging
 import traceback
-from typing import Union, Optional
+from typing import  Any, Union, Dict
 
 from mcp.server.fastmcp import FastMCP
 
 from cs_mcp_server.client import GraphQLClient
-from cs_mcp_server.utils import HoldRelationship, ToolError
+from cs_mcp_server.utils import HoldRelationship, Hold, ToolError
 from cs_mcp_server.utils.constants import (
     CM_HOLD_CLASS,
     CM_HOLD_RELATIONSHIP_CLASS,
     ID_PROPERTY,
-    HELD_OBJECT_PROPERTY,
     TRACEBACK_LIMIT,
 )
+from cs_mcp_server.utils.model.admin import HeldObject
+from cs_mcp_server.utils.utils import graphql_client_execute_async_wrapper
 
 
 # Logger for this module
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) 
 
 
-def register_legalhold(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
+def register_hold_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
     """
     Register to MCP server all the legal hold tools.
     """
 
-    def find_hold_relationship_object(
+    async def _find_hold_relationship_object(
         hold_object_id: str, held_object_id: str
-    ) -> Optional[str]:
+    ) -> Union [ToolError, str, None]:
         """
         :returns: the id of the CmHoldRelationship object, or None if no relationship is found.
+                 If an error occurs, returns a ToolError object.
         """
+        method_name = "_find_hold_relationship_object"
 
-        query = """
-        query getCmRelationshipObject ($object_store_name: String!, 
-            $where_clause: String!
-            ) {
-                repositoryObjects(
-                    repositoryIdentifier: $object_store_name,
-                    from: "CmHoldRelationship",
-                    where: $where_clause
+        try:
+
+            query = """
+            query getCmRelationshipObject ($object_store_name: String!, 
+                $where_clause: String!
                 ) {
-                independentObjects {
-                    className
-                    properties {
-                        id
-                        value
+                    repositoryObjects(
+                        repositoryIdentifier: $object_store_name,
+                        from: "CmHoldRelationship",
+                        where: $where_clause
+                    ) {
+                    independentObjects {
+                        className
+                        properties {
+                            id
+                            value
+                        }
                     }
                 }
             }
-        }
-        """
+            """
 
-        formatted_hold_value = f"({{hold_object_id}})"
-        formatted_held_value = f"({{held_object_id}})"
-        condition_string = f"[Hold] = Object {formatted_hold_value} and [HeldObject] = Object {formatted_held_value}"
+            formatted_hold_value = f"({hold_object_id})"
+            formatted_held_value = f"({held_object_id})"
+            condition_string = f"[Hold] = Object {formatted_hold_value} and [HeldObject] = Object {formatted_held_value}"
 
-        var = {
-            "object_store_name": graphql_client.object_store,
-            "where_clause": condition_string,
-        }
+            var = {
+                "object_store_name": graphql_client.object_store,
+                "where_clause": condition_string,
+            }
 
-        response = graphql_client.execute(query=query, variables=var)
+            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=query, variables=var)
+            if isinstance   (response, ToolError):
+                return response
 
-        if "errors" in response:
+
+            if "data" not in response or "repositoryObjects" not in response["data"] or "independentObjects" not in response["data"]["repositoryObjects"]:
+                return None
+
+            # return the id of the CmRelationshipObject
+            hold_relationships = response["data"]["repositoryObjects"]["independentObjects"]
+            # walk thru each relationship object,
+            for item in hold_relationships:
+                properties = item["properties"]
+                for prop in properties:
+                    if prop["id"] == ID_PROPERTY:
+                        return prop["value"]
             return None
+        except Exception as ex:
+            error_traceback = traceback.format_exc(limit=TRACEBACK_LIMIT)
+            logger.error(
+                f"{method_name} failed: {ex.__class__.__name__} - {str(ex)}\n{error_traceback}"
+            )
 
-        # return the id of the CmRelationshipObject
-        hold_relationships = response["data"]["repositoryObjects"]["independentObjects"]
-        # walk thru each relationship object,
-        for item in hold_relationships:
-            properties = item["properties"]
-            for prop in properties:
-                if prop["id"] == ID_PROPERTY:
-                    return prop["value"]
+            return ToolError(
+                message=f"{method_name} failed: got err {ex}. Trace available in server logs.",
+            )
 
-        return None
+
 
     @mcp.tool(
-        name="release_an_object_from_hold_tool",
+        name="delete_object_from_hold",
     )
-    def release_an_object_from_hold_tool(
+    async def delete_object_from_hold(
         hold_id: str, held_id: str
-    ) -> Union[dict, ToolError]:
+    ) -> Union[str, ToolError]:
         """
         Remove a hold on a held object given a hold id and a held id.
 
         :param hold_id: The hold id.
         :param held_id: The held id.
 
-        :returns: If successful, return a dict describing that the hold has been removed from the held object.
+        :returns: If successful, return a identifier of the Hold Relationship just deleted
                   Else, return a ToolError instance that describes the error.
         """
 
@@ -121,15 +140,16 @@ def register_legalhold(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
         #    should be removed from the hold.
 
         # look for an Object of CmHoldRelationship with the passed in Hold id and Held Id
-        method_name = "release_an_object_from_hold_tool"
+        method_name = "delete_object_from_hold"
         try:
-            hold_relationship_id = find_hold_relationship_object(hold_id, held_id)
+            hold_relationship_id = await _find_hold_relationship_object(hold_id, held_id)
             if hold_relationship_id is None:
-                # Return a dictionary with information instead of None
-                return {
-                    "status": "no_action_needed",
-                    "message": "No hold relationship found between the specified hold and held object.",
-                }
+                # Return a toolError 
+                return ToolError(
+                    message=f"{method_name} no_action_needed: No hold relationship found between the specified hold and held object.",
+                )
+            if isinstance (hold_relationship_id, ToolError):  # if the function returned a ToolError
+                return hold_relationship_id
 
             mutation = """
             mutation ($object_store_name: String!, 
@@ -166,35 +186,38 @@ def register_legalhold(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 "hold_relationship_id": hold_relationship_id,
             }
 
-            response = graphql_client.execute(query=mutation, variables=var)
-            # handling exception, for example bad value for hold id
-            if "errors" in response:
-                return ToolError(
-                    message=f"{method_name} failed: got err {response}.",
-                )
+            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=mutation, variables=var)
+            if isinstance   (response, ToolError):
+                return response
 
-            # return the information for all the objects that this hold now has
-            return response["data"]["changeObject"]
-        except Exception as e:
+            # return the identifier of the Hold Relationship object just deleted
+            return response["data"]["changeObject"]["objectReference"]["identifier"]
+        except Exception as ex:
+            error_traceback = traceback.format_exc(limit=TRACEBACK_LIMIT)
+            logger.error(
+                f"{method_name} failed: {ex.__class__.__name__} - {str(ex)}\n{error_traceback}"
+            )
+
             return ToolError(
-                message=f"{method_name} failed: got err {e}",
+                message=f"{method_name} failed: got err {ex}. Trace available in server logs.",
             )
 
     @mcp.tool(
-        name="remove_a_hold_tool",
+        name="delete_hold",
     )
-    def remove_a_hold_tool(hold_object_id: str) -> Union[dict, ToolError]:
+    async def delete_hold(hold_object_id: str) -> Union[str, ToolError]:
         """
         Remove a hold.  This action will release all objects that are held by the hold identified
         by the hold_object_id.
 
         :param hold_object_id: The hold object id to which all the held objects are identified.
 
-        :returns: If successful, return a dict describing that the hold object has just been deleted.
+        :returns: If successful, return the Identifier of the hold object has just been deleted.
                   Else, return a ToolError instance that describes the error.
         """
 
-        method_name = "remove_a_hold_tool"
+        method_name = "delete_hold"
         try:
             mutation = """
             mutation ($object_store_name: String!, 
@@ -232,51 +255,42 @@ def register_legalhold(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 "hold_identifier": hold_object_id,
             }
 
-            response = graphql_client.execute(query=mutation, variables=var)
-            # handling exception, for example bad value for hold id
-            if "errors" in response:
-                return ToolError(
-                    message=f"{method_name} failed: got err {response}.",
-                )
-
+            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=mutation, variables=var)
+            if isinstance   (response, ToolError):
+                return response
+            
             # return the information for all the objects that this hold now has
-            return response["data"]["changeObject"]
-        except Exception as e:
+            return response["data"]["changeObject"]["objectReference"]["identifier"]
+        except Exception as ex:
+            error_traceback = traceback.format_exc(limit=TRACEBACK_LIMIT)
+            logger.error(
+                f"{method_name} failed: {ex.__class__.__name__} - {str(ex)}\n{error_traceback}"
+            )
+
             return ToolError(
-                message=f"{method_name} failed: got err {e}",
+                message=f"{method_name} failed: got err {ex}. Trace available in server logs.",
             )
 
     @mcp.tool(
-        name="create_a_hold_tool",
+        name="create_hold",
     )
-    def create_a_hold_tool(display_name: str) -> Union[dict, ToolError]:
-        """
-        Create a CmHold instance with identifying information
-
-        :param display_name: Value of display name for the newly created hold object.
-
-        :returns: If successful, return a dict that describes the newly created object.
-                  Else, return a ToolError instance that describes the error.
-        """
-        return create_a_hold(display_name, hold_class=CM_HOLD_CLASS)
-
-    def create_a_hold(display_name: str, hold_class: str) -> Union[dict, ToolError]:
+    async def create_hold(display_name: str, hold_class: str = CM_HOLD_CLASS) -> Union[Hold, ToolError]:
         """
         Create a hold with identifying information
 
-        :param hold_class: The hold class to instantiate a new object
-        :param display_name: Value of display name for the newly created hold object.
 
-        :returns: If successful, return a dict that describes the newly created object.
+        :param display_name: Value of display name for the newly created hold object.
+        :param hold_class (optional): The hold class to instantiate a new object
+
+        :returns: If successful, return a pydantic Hold object that describes the newly created object.
                   Else, return a ToolError instance that describes the error.
         """
         method_name = "create_a_hold"
         try:
-            # TODO: make sure that the subclass symbolic name is derived from a CmHold class
             if not hold_class:
                 hold_class = CM_HOLD_CLASS
 
-            # TODO: extract the properties of the new hold and set the properties string
 
             mutation = """
                     mutation ($object_store_name: String!, $class_name: String!, $display_name: String!) {
@@ -309,23 +323,28 @@ def register_legalhold(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 "class_name": hold_class,
                 "display_name": display_name,
             }
-            response = graphql_client.execute(query=mutation, variables=var)
-            # handling exception, for example bad value for hold id
-            if "errors" in response:
-                return ToolError(
-                    message=f"{method_name} failed: got err {response}.",
-                )
 
-            return response["data"]["changeObject"]
-        except Exception as e:
+            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=mutation, variables=var)
+            if isinstance   (response, ToolError):
+                return response
+
+            return Hold.create_an_instance(response["data"]["changeObject"])
+
+        except Exception as ex:
+            error_traceback = traceback.format_exc(limit=TRACEBACK_LIMIT)
+            logger.error(
+                f"{method_name} failed: {ex.__class__.__name__} - {str(ex)}\n{error_traceback}"
+            )
+
             return ToolError(
-                message=f"{method_name} failed: got err {e}",
+                message=f"{method_name} failed: got err {ex}. Trace available in server logs.",
             )
 
     @mcp.tool(
-        name="put_an_object_on_hold_tool",
+        name="add_object_to_hold",
     )
-    def put_an_object_on_hold_tool(
+    async def add_object_to_hold(
         hold_id: str, held_class: str, held_id: str
     ) -> Union[HoldRelationship, ToolError]:
         """
@@ -346,7 +365,7 @@ def register_legalhold(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                   Else, return a ToolError instance that describes the error.
         """
 
-        method_name = "put_an_object_on_hold_tool"
+        method_name = "add_object_to_hold"
 
         try:
             mutation = """
@@ -394,95 +413,31 @@ def register_legalhold(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 "held_class_name": held_class,
                 "held_identifier": held_id,
             }
-            response = graphql_client.execute(query=mutation, variables=var)
 
-            # handling exception, for example bad value for hold id
-            if response is None:
-                return ToolError(
-                    message=f"{method_name} failed: No response returned from gql {mutation}",
-                )
-            if "errors" in response:
-                return ToolError(
-                    message=f"{method_name} failed: got err {response}",
-                )
+            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=mutation, variables=var)
+            if isinstance   (response, ToolError):
+                return response
 
             # return the information for the new/updated hold relationship
             # Note: There cam only exist 1 hold relationship between a unique hold and held object
             return HoldRelationship.create_an_instance(response["data"]["changeObject"])
-        except Exception as e:
-            return ToolError(
-                message=f"{method_name} failed: got err {e}",
-            )
-
-    def get_all_hold_relationships_for_a_hold(
-        hold_object_id: str,
-    ) -> Union[dict, ToolError]:
-        """
-        Given a hold object identified by its class and id, return all the hold relationships
-
-        :param hold_id:     The hold object id.
-
-        :returns: If successful, return a dict for independentObjects.
-                  Else, return a ToolError instance that describes the error.
-        """
-        method_name = "get_all_hold_relationships_for_a_hold"
-        try:
-            query = """
-            query getCmRelationshipObjectsForAHold ($object_store_name: String!, 
-                $where_clause: String!, 
-                ) {
-                repositoryObjects(
-                    repositoryIdentifier: $object_store_name,
-                    from: "CmHoldRelationship",
-                    where: $where_clause
-                ) {
-                independentObjects {
-                    className
-                    properties (includes: ["HeldObject", "Hold", "Id"]) {
-                        id
-                        value
-                    }
-                }
-                }
-            }
-            """
-
-            formatted_hold_value = f"({hold_object_id})"
-            condition_string = f"[Hold] = Object {formatted_hold_value}"
-
-            var = {
-                "object_store_name": graphql_client.object_store,
-                "where_clause": condition_string,
-            }
-
-            response = graphql_client.execute(query=query, variables=var)
-
-            # Check for errors in the response
-            if response is None:
-                return ToolError(
-                    message=f"{method_name} failed: No response returned from GraphQL query"
-                )
-            if "errors" in response:
-                return ToolError(
-                    message=f"{method_name} failed: GraphQL errors: {response['errors']}"
-                )
-
-            return response
-        except Exception as e:
+        except Exception as ex:
             error_traceback = traceback.format_exc(limit=TRACEBACK_LIMIT)
             logger.error(
-                f"{method_name} failed: {e.__class__.__name__} - {str(e)}\n{error_traceback}"
+                f"{method_name} failed: {ex.__class__.__name__} - {str(ex)}\n{error_traceback}"
             )
+
             return ToolError(
-                message=f"{method_name} failed: got err {e}",
+                message=f"{method_name} failed: got err {ex}. Trace available in server logs.",
             )
 
     @mcp.tool(
-        name="list_held_objects_for_a_hold_tool",
+        name="get_held_objects_for_hold",
     )
-    async def list_held_objects_for_a_hold_tool(
+    async def get_held_objects_for_hold(
         hold_object_id: str,
-    ) -> Union[list, ToolError]:
+    ) -> Union[list [HeldObject], ToolError]:
         """
         Given a hold object identified by its id, return all the objects that it held
 
@@ -491,62 +446,127 @@ def register_legalhold(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
         :returns: If successful, return a list of held objects.
                   Else, return a ToolError instance that describes the error.
         """
-        method_name = "list_held_objects_for_a_hold_tool"
-        try:
-            response = get_all_hold_relationships_for_a_hold(hold_object_id)
+        method_name = "get_held_objects_for_hold"
 
-            # handling exception, for example bad value for hold id
-            if isinstance(response, ToolError):
+        GET_HELD_OBJECTS_FOR_HOLD_QUERY = """ 
+query getHeldObjectsForAHold ($object_store_name: String!, 
+                $identifier: String!)
+        {
+  object(
+    repositoryIdentifier: $object_store_name,
+    classIdentifier:"CmHold",
+    identifier: $identifier
+  ) {
+    className
+    objectReference {
+      repositoryIdentifier
+      classIdentifier
+      identifier
+    }
+    properties(includes:["Id", "CmHoldRelationships"]) {
+      id
+      value
+      ... on EnumProperty {
+        independentObjectSetValue {
+          independentObjects {
+            className
+            objectReference {
+              repositoryIdentifier
+              classIdentifier
+              identifier
+            }
+            properties(includes:["Id", "HeldObject"]) {
+              id
+              value
+              ... on ObjectProperty {
+                objectValue {
+                  className
+                  ... on Containable {
+                    dateCreated
+                    dateLastModified
+                    name
+                  }
+                  ... on CustomObject {
+                    customObjectId: id
+                  }
+                  ... on Document {
+                    documentId:id
+                  }
+                  ... on Annotation {
+                    annotationId: id
+                    dateCreated
+                    dateLastModified
+                    name
+                  }
+                  ... on Folder {
+                    folderId: id
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+        """
+
+        try:
+
+            var = {
+                "object_store_name": graphql_client.object_store,
+                "identifier": hold_object_id,
+            }
+
+            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=GET_HELD_OBJECTS_FOR_HOLD_QUERY, variables=var)
+            if isinstance   (response, ToolError):
                 return response
 
-            hold_relationships_list = response["data"]["repositoryObjects"][
-                "independentObjects"
-            ]
+            # extract the list of held objects from the graphQL response
+            graphQL_held_objects_list = None    # initialization of the list of graphQL held objects
+            # for every CmHoldRelationships property in the hold, get the list of held objects
+            for hold_property in response["data"]["object"]["properties"]:
+                if hold_property["id"] == "CmHoldRelationships":
+                    graphQL_held_objects_list = hold_property["independentObjectSetValue"]["independentObjects"]  
 
-            held_objects = []
 
-            # walk thru each relationship object,
-            if hold_relationships_list is None:
-                return held_objects
-
-            for item in hold_relationships_list:
-                properties = item["properties"]
-                for prop in properties:
-                    if prop["id"] == HELD_OBJECT_PROPERTY:
-                        held_objects.append(prop["value"])
-
-            # the returned data only has the repo_id, class_id and object_id to identify the CmHoldable object
-            # for example: {'identifier': '{98CE05E0-0000-C193-B573-ACE942EA2512}', 'repositoryIdentifier': 'p8os1', 'classIdentifier': 'Document'}
-
-            # TODO: call search to return more information for these Holdable objects.
-            # find some shareable properties in CmHoldable class
+            # walk thru each list of graphQL held objects annd create a list of pydantic HeldObject objects
+            held_objects: list[HeldObject] = [] # initialize the list of pydantic HeldObject objects to be returned       
+            if graphQL_held_objects_list is not None:
+                for held_object in graphQL_held_objects_list:
+                    a_held_object = HeldObject.create_an_instance(held_object)
+                    held_objects.append(a_held_object)
+ 
             return held_objects
-        except Exception as e:
-            formatted_trace = (
-                traceback.format_exc()
-            )  # Returns the traceback as a string
+
+        except Exception as ex:
+            error_traceback = traceback.format_exc(limit=TRACEBACK_LIMIT)
+            logger.error(
+                f"{method_name} failed: {ex.__class__.__name__} - {str(ex)}\n{error_traceback}"
+            )
+
             return ToolError(
-                message=f"{method_name} failed: got err {e}. Trace {formatted_trace}",
+                message=f"{method_name} failed: got err {ex}. Trace available in server logs.",
             )
 
     @mcp.tool(
-        name="list_holds_by_name_tool", description="List all hold objects given a name"
+        name="get_holds_by_name", description="List all hold objects given a name"
     )
-    async def list_holds_by_name_tool(hold_display_name: str) -> Union[dict, ToolError]:
+    async def get_holds_by_name(hold_display_name: str) -> Union[list[Hold], ToolError]:
         """
-        Search and return CmHold objects where the displayName contains the specified hold_display_name (case-insensitive).
-
-        This method performs a partial match search using SQL LIKE operator with wildcards,
-        so it will find holds where the display name contains the search term anywhere in the string.
+        Performs a case-insensitive substring search on the displayName field of CmHold objects, 
+        returning all objects where the field contains the input hold_display_name string.
 
         :param hold_display_name: Search term for filtering holds by display name.
 
-        :returns: If successful, returns a dictionary containing 'repositoryObjects' with matching holds.
+        :returns: If successful, returns a list of Hold objects where the objects's display name contains the input string.
                 Each hold includes its identifier, displayName, and creator properties.
                 If no matches are found, returns an empty result set.
                 If an error occurs, returns a ToolError instance with error details.
         """
-        method_name = "list_holds_by_name_tool"
+        method_name = "get_holds_by_name"
         logger.info(f"Enter MCP_LEGAL_HOLD {method_name}")
         try:
             query = """
@@ -579,10 +599,19 @@ def register_legalhold(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 "where_clause": condition_string,
             }
 
-            response = await graphql_client.execute_async(query=query, variables=var)
+            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=query, variables=var)
+            if isinstance   (response, ToolError):
+                return response
 
             # return holds with the display_name
-            return response["data"]
+            # convert GraphQL to Pydantic objects
+            holds: list[Hold] = [
+                Hold.create_an_instance(hold)
+                for hold in response["data"]["repositoryObjects"]["independentObjects"]
+            ]
+            return holds    
+
         except Exception as ex:
             error_traceback = traceback.format_exc(limit=TRACEBACK_LIMIT)
             logger.error(
@@ -592,3 +621,5 @@ def register_legalhold(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
             return ToolError(
                 message=f"{method_name} failed: got err {ex}. Trace available in server logs.",
             )
+
+

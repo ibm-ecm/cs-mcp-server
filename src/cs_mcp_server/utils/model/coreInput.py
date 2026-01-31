@@ -55,6 +55,19 @@ class CustomInputBase(BaseModel):
         """
         return self._contentElements
 
+    def eval(self):
+        """
+        Evaluate and normalize property values, converting None to NULL_VALUE.
+    
+        This method is designed to be called on subclasses that have a 'properties' attribute.
+        """
+        if hasattr(self, 'properties') and self.properties is not None:
+            properties: Optional[List[PropertyIdentifierAndScalarValue]] = getattr(self, 'properties', None)
+            if properties:
+                for prop in properties:
+                    if prop.value is None:
+                        prop.value = NULL_VALUE
+
     def transform_properties_dict(self, exclude_none: bool = True) -> Dict[str, Any]:
         """
         Transform a model to a dictionary with properties in the format:

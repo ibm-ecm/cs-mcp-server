@@ -29,9 +29,9 @@ logger = logging.getLogger(__name__)
 def register_annotation_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
 
     @mcp.tool(
-        name="get_document_annotations_tool",
+        name="get_document_annotations",
     )
-    async def get_document_annotations_tool(
+    async def get_document_annotations(
         document_id: str,
     ) -> Union[list[Annotation], ToolError]:
         """
@@ -169,5 +169,136 @@ def register_annotation_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> No
                     "Check network connectivity",
                     "Verify GraphQL endpoint is accessible",
                     "Ensure document ID is valid",
+                ],
+            )
+
+
+    @mcp.tool(
+        name="get_annotation",
+    )
+    async def get_annotation(
+        annotation_id: str,
+    ) -> Union[Annotation, ToolError]:
+        """
+        Retrieves an annotation associated with an annotation id.
+
+        This tool fetches annotation metadata including creator, dates, descriptive text,
+        and content element information. 
+
+        :param annotation_id: The annotation ID to retrieve information for.
+
+        :returns: An annotation with the following structure:
+                    - className: The class name of the annotation
+                    - creator: The creator of the annotation
+                    - dateCreated: Creation timestamp
+                    - dateLastModified: Last modification timestamp
+                    - id: Unique identifier of the annotation
+                    - name: Name of the annotation
+                    - owner: Owner of the annotation
+                    - descriptiveText: Text description of the annotation
+                    - contentSize: Size of the annotation content
+                    - mimeType: MIME type of the annotation
+                    - annotatedContentElement: Content element being annotated
+                    - contentElementsPresent: Whether content elements are present
+                    - contentElements: List of content elements with className, contentType, and sequence
+
+                Returns ToolError if the annotation doesn't exist or another error occurs.
+        """
+        method_name: str = "get_annotation"
+
+        if not annotation_id or not isinstance(annotation_id, str):
+            return ToolError(
+                message="Invalid annotation ID provided",
+                suggestions=["Provide a valid annotation ID string"],
+            )
+
+        # Extract query to a constant for better maintainability
+        AN_ANNOTATION_QUERY = """
+        query getAnAnnotation($object_store_name: String!, $annotation_id: String!){
+            annotation(repositoryIdentifier: $object_store_name, identifier: $annotation_id){
+                        className
+                        creator
+                        dateCreated
+                        dateLastModified
+                        id
+                        name
+                        owner
+                        descriptiveText
+                        contentSize
+                        mimeType
+                        annotatedContentElement
+                        contentElementsPresent
+                        contentElements {
+                            className
+                            contentType
+                            elementSequenceNumber
+                        }
+                    }
+        }
+        """
+
+        variables = {
+            "annotation_id": annotation_id,
+            "object_store_name": graphql_client.object_store,
+        }
+
+        try:
+            result = await graphql_client.execute_async(
+                query=AN_ANNOTATION_QUERY, variables=variables
+            )
+
+            # Check for no result returned before checking if there is "errors" key in the result dictionary
+            if result is None:
+                return ToolError(
+                    message="No annotation found or invalid annotation id",
+                    suggestions=[
+                        "Verify the annotation exists",
+                    ],
+                )
+
+            # Check for GraphQL errors
+            if "errors" in result:
+                return ToolError(
+                    message=f"GraphQL error: {result['errors'][0]['message']}",
+                    suggestions=[
+                        "Verify the annotation ID exists",
+                        "Check if you have permission to access this annotation",
+                    ],
+                )
+
+            # Check for empty or invalid response
+            if (
+                not result
+                or "data" not in result
+                or not result["data"]
+                or "annotation" not in result["data"]
+            ):
+                return ToolError(
+                    message="No annotation found",
+                    suggestions=[
+                        "Verify the annotation exists",
+                    ],
+                )
+
+
+ 
+            a_annotation = Annotation.create_an_instance(
+            graphQL_changed_object_dict=result["data"]["annotation"],
+                        class_name=result["data"]["annotation"]["className"],
+            )
+
+            return a_annotation
+
+        except Exception as e:
+            error_traceback = traceback.format_exc(limit=TRACEBACK_LIMIT)
+            logger.error(
+                f"{method_name} failed: {e.__class__.__name__} - {str(e)}\n{error_traceback}"
+            )
+            return ToolError(
+                message=f"Error retrieving annotation: {str(e)}",
+                suggestions=[
+                    "Check network connectivity",
+                    "Verify GraphQL endpoint is accessible",
+                    "Ensure annotation ID is valid",
                 ],
             )

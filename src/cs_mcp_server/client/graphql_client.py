@@ -60,6 +60,7 @@ class GraphQLClient(GraphqlConnection):
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
         timeout: Optional[float] = 60.0,
+        locale:Optional[str] = None,
         pool_connections: int = 100,
         pool_maxsize: int = 100,
         token_refresh: int = 1800,  # Default to 30 minutes (1800 seconds)
@@ -160,6 +161,9 @@ class GraphQLClient(GraphqlConnection):
         # Retry configuration
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+
+        # locale
+        self.locale = locale
 
         # Track last request time for rate limiting
         self.last_request_time = 0
@@ -827,6 +831,8 @@ class GraphQLClient(GraphqlConnection):
             headers["Content-Type"] = "application/json"
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
+        if self.locale and len(self.locale) > 0:
+            headers["Accept-Language"] = self.locale
         return headers
 
     def _prepare_cookies(self):

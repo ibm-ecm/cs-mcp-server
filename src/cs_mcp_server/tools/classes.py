@@ -475,71 +475,6 @@ def register_class_tools(
         return metadata_cache.get_root_class_keys()
 
     @mcp.tool(
-        name="list_all_classes",
-    )
-    def list_all_classes_tool(
-        root_class: str,
-    ) -> Union[List[ClassDescriptionData], ToolError]:
-        """
-        List all available classes for a specific root class type.
-
-        IMPORTANT: Only use this tool when the user explicitly asks to see a list of classes of a specific root class.
-        If a user does not specify a root_class, you **MUST** request the root class from them.
-        To get a list of all valid root class names that can be used with this tool, you can call the `list_root_classes_tool` tool.
-
-        :param root_class: The root class to list all classes for (e.g., "Document", "Folder", "Annotation", "CustomObject")
-
-        :returns: A list of all classes for the specified root class, or a ToolError if an error occurs
-        """
-        # Validate root_class parameter by checking the cache keys
-        if root_class not in metadata_cache.get_root_class_keys():
-            return ToolError(
-                message=f"Invalid root class '{root_class}'. Root class must be one of: {metadata_cache.get_root_class_keys()}",
-                suggestions=[
-                    "Use list_root_classes tool first to get valid root class names",
-                ],
-            )
-
-        # First, ensure the root class cache is populated
-        root_class_result = get_root_class_description_tool(
-            graphql_client=graphql_client,
-            root_class_type=root_class,
-            metadata_cache=metadata_cache,
-        )
-
-        # If there was an error populating the root class cache, return it
-        if isinstance(root_class_result, ToolError):
-            return root_class_result
-
-        # Get all classes for the specified root class
-        all_classes = metadata_cache.get_class_cache(root_class)
-
-        if not all_classes:
-            return ToolError(
-                message=f"No classes found for root class '{root_class}'",
-                suggestions=[
-                    "Check if the metadata cache is properly populated",
-                    "Try refreshing the class metadata",
-                ],
-            )
-
-        # Convert all classes to ClassDescriptionData objects
-        result = []
-        for class_name, class_data in all_classes.items():
-            # Skip if class_data is not a CacheClassDescriptionData object
-            if not isinstance(class_data, CacheClassDescriptionData):
-                continue
-
-            # Use model_validate to convert CacheClassDescriptionData to ClassDescriptionData
-            class_desc_data = ClassDescriptionData.model_validate(class_data)
-            result.append(class_desc_data)
-
-        # Sort results by symbolic name for consistency
-        result.sort(key=lambda x: x.symbolic_name)
-
-        return result
-
-    @mcp.tool(
         name="determine_class",
     )
     def determine_class(
@@ -652,11 +587,16 @@ def register_class_tools(
         class_symbolic_name: str,
     ) -> Union[List[CachePropertyDescription], ToolError]:
         """
-        Retrieves properties of a class.
+        Retrieves ALL properties of a class including system properties.
+
+        IMPORTANT: Use this tool ONLY for general document updates where you need to see ALL properties
+        of a class, including system-owned and hidden properties.
+
+        DO NOT use this tool for property extraction workflows.
 
         :param class_symbolic_name: The symbolic name of the class to retrieve properties for
 
-        :returns: A list of CachePropertyDescription objects for each property
+        :returns: A list of CachePropertyDescription objects for each property (including system properties)
         """
         class_metadata = get_class_metadata_tool(
             graphql_client=graphql_client,
