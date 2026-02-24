@@ -18,8 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Returns only released versions of documents
   - Automatically escapes special characters in search terms
 
+### Changed
+- **IMPORTANT**: Document search workflow updated - use `document_search` tool instead of `repository_object_search` for document searches
+  - `document_search` provides specialized document search with content-based and metadata filtering
+  - `repository_object_search` remains available for searching other repository objects (folders, custom objects, etc.)
+
 ### Removed
-- Removed get annotaion and custom object tools from Core Server (low usage)
+- Removed get annotation and custom object tools from Core Server (low usage)
 
 ### Fixed
 - Fixed GraphQL client async wrapper execution issues
