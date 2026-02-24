@@ -35,6 +35,10 @@ from aiohttp.helpers import BasicAuth
 
 from .csdeploy.gqlinvoke import GraphqlConnection, GraphqlRequest
 from .ssl_adapter import SSLAdapter
+from cs_mcp_server.utils import ToolError
+from cs_mcp_server.utils.constants import TRACEBACK_LIMIT
+from logging import Logger
+import traceback
 
 # Logger for this module
 logger = logging.getLogger("GraphQLClient")
@@ -1554,3 +1558,47 @@ class GraphQLClient(GraphqlConnection):
             result["error"] = str(last_exception)
 
         return result
+
+
+async def graphql_client_execute_async_wrapper (
+    logger: Logger,
+    method_name: str,
+    graphql_client: GraphQLClient, 
+    query: str, variables: Optional[Dict[str, Any]] = None
+    ) -> Union [ToolError, Dict[str, Any]]:
+    "Wrapper for graphql_client.execute_async to handle errors, timing and logging of GraphQL queries."
+    
+    start_time = time.perf_counter()
+    response = None
+    try:
+        logger.debug(f"{method_name}, GraphQL query: {query}, GraphQL variables: {variables} ") 
+        response = await graphql_client.execute_async(query=query, variables=variables)
+        if "errors" in response:
+            error_message = response["errors"]
+            logger.error(f"{method_name} failed: {error_message}")
+            return ToolError(   message=f"{method_name} failed: got err {error_message}. Trace available in server logs.", )    
+
+        if "error" in response:
+            error_type = response.get("error_type", "")  # Get error_type if it exists, otherwise empty string               
+            error_message = f"error_type = {error_type}, message = {response["message"]}"
+            logger.error(f"{method_name} failed: {error_message}")
+            return ToolError(   message=f"{method_name} failed: got err {error_message}. Trace available in server logs.", )    
+
+        if "data" not in response or response["data"] is None:
+            error_message = f" No 'data' returned from GraphQL query"
+            logger.error(f"{method_name} failed: {error_message}")
+            return ToolError(   message=f"{method_name} failed: got err {error_message}. Trace available in server logs.", )    
+
+        return response 
+    except Exception as ex:
+        error_traceback = traceback.format_exc(limit=TRACEBACK_LIMIT)
+        logger.error(
+                f"{method_name} failed: {ex.__class__.__name__} - {str(ex)}\n{error_traceback}"
+            )
+
+        return ToolError(
+                message=f"{method_name} failed: got err {ex}. Trace available in server logs.",
+            )
+    finally:
+        logger.debug(f"{method_name}, GraphQL response (elapse {time.perf_counter() - start_time:.2f}s): {response}") 
+

@@ -583,7 +583,7 @@ def register_class_tools(
     @mcp.tool(
         name="get_class_property_descriptions",
     )
-    def get_class_property_descriptions(
+    async def get_class_property_descriptions(
         class_symbolic_name: str,
     ) -> Union[List[CachePropertyDescription], ToolError]:
         """
@@ -598,7 +598,7 @@ def register_class_tools(
 
         :returns: A list of CachePropertyDescription objects for each property (including system properties)
         """
-        class_metadata = get_class_metadata_tool(
+        class_metadata = await get_class_metadata_tool(
             graphql_client=graphql_client,
             class_symbolic_name=class_symbolic_name,
             metadata_cache=metadata_cache,

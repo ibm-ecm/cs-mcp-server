@@ -17,11 +17,11 @@ import logging
 import re
 import traceback
 import uuid
-from typing import Optional, Union
+from typing import Optional, Union, Dict, Any
 
 from mcp.server.fastmcp import FastMCP
 
-from cs_mcp_server.client import GraphQLClient
+from cs_mcp_server.client.graphql_client import GraphQLClient, graphql_client_execute_async_wrapper
 from cs_mcp_server.utils import ToolError
 from cs_mcp_server.utils.model.core import NULL_VALUE, Document, Folder
 from cs_mcp_server.utils.model.coreInput import FolderPropertiesInput
@@ -163,7 +163,7 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
         """
         method_name = "delete_folder"
         try:
-            # dcheck id or path
+            # check id or path
             if not id_or_path:
                 return ToolError(
                     message=f"delete_folder failed: id is a required input.",
@@ -192,7 +192,6 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 return ToolError(
                     message=f"delete_folder failed: got err {response}.",
                 )
-            return_id = response["data"]["deleteFolder"]["id"]
 
             return response["data"]["deleteFolder"]["id"]
 
@@ -312,11 +311,11 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                     }
             """
             var = {"repo": graphql_client.object_store, "id": return_id}
-            response = await graphql_client.execute_async(query=mutation, variables=var)
-            if "errors" in response:
-                return ToolError(
-                    message=f"unfile_document failed: got err {response}.",
-                )
+            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=mutation, variables=var)
+            if isinstance   (response, ToolError):
+                return response
+
             return response["data"]["deleteReferentialContainmentRelationship"]["id"]
 
         except Exception as e:
@@ -366,13 +365,10 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 "folderIdentifier": folder_id_or_path,
             }
 
-            response = await graphql_client.execute_async(query=mutation, variables=var)
-
-            # handling exception
-            if "errors" in response:
-                return ToolError(
-                    message=f"file_document failed: got err {response}.",
-                )
+            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=mutation, variables=var)
+            if isinstance   (response, ToolError):
+                return response
 
             return response["data"]["fileDocument"]["id"]
 
@@ -538,14 +534,11 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
 
             # Execute the GraphQL mutation
             logger.info("Executing folder update")
-            response = await graphql_client.execute_async(
-                query=mutation, variables=variables
-            )
-
-            # Handle errors
-            if "errors" in response:
-                logger.error("GraphQL error: %s", response["errors"])
-                return ToolError(message=f"{method_name} failed: {response['errors']}")
+            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=mutation, variables=variables)
+            # handling exception
+            if isinstance   (response, ToolError):
+                return response
 
             # Create and return a folder instance from the response
             return Folder.create_an_instance(
@@ -609,12 +602,11 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
             }
 
             # return await graphql_client.execute_async(query=query, variables=variables)
-            docs = await graphql_client.execute_async(query=query, variables=variables)
-
-            if "errors" in docs:
-                return ToolError(
-                    message=f"get_folder_documents failed: got err {docs}.",
-                )
+            docs: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=query, variables=variables)
+            # handling exception
+            if isinstance   (docs, ToolError):
+                return docs
 
             docslist = docs["data"]["folder"]["containedDocuments"]["documents"]
             if len(docslist) == 0:
@@ -678,16 +670,13 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
             }
 
 
+            # Execute the GraphQL query
+            logger.info(f"{method_name}: Executing folder detail retrieval")
             # Execute the GraphQL mutation
-            logger.info("Executing folder detail retrieval")
-            response = await graphql_client.execute_async(
-                query=FOLDER_QUERY, variables=variables
-            )
-
-            # Handle errors
-            if "errors" in response:
-                logger.error("GraphQL error: %s", response["errors"])
-                return ToolError(message=f"{method_name} failed: {response['errors']}")
+            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=FOLDER_QUERY, variables=variables)
+            if isinstance   (response, ToolError):
+                return response
 
             # Check for empty or invalid response
             if (
@@ -707,7 +696,7 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
             return Folder.create_an_instance(
                 graphQL_changed_object_dict=response["data"]["folder"],
                 class_identifier=(
-                    response["data"]["folder"] if response["data"]["folder"] else DEFAULT_FOLDER_CLASS
+                    response["data"]["folder"]["className"] if response["data"]["folder"]["className"] else DEFAULT_FOLDER_CLASS
                 ),
             )
 
@@ -716,4 +705,4 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
             logger.error(traceback.format_exc())
             return ToolError(
                 message=f"{method_name} failed: {str(e)}. Trace available in server logs."
-            )            
+            )

@@ -12,16 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
-import logging, time
-import re
+import logging
 import traceback
-import uuid
-from typing import LiteralString, Optional, Union
+
+from typing import Any, Dict, Union
+from cs_mcp_server.utils.constants import (
+    TRACEBACK_LIMIT,
+)
 
 from mcp.server.fastmcp import FastMCP
 
-from cs_mcp_server.client import GraphQLClient
+from cs_mcp_server.client.graphql_client import GraphQLClient, graphql_client_execute_async_wrapper
 from cs_mcp_server.utils import ToolError
 from cs_mcp_server.utils.model.core import  CustomObject
 
@@ -47,7 +48,7 @@ def register_custom_object_tools(mcp: FastMCP, graphql_client: GraphQLClient) ->
         :returns: a CustomObject object or
                  ToolError if the custom Object doesn't exist or another error occurs.
         """
-        method_name: str = "get_a_ custom_object"
+        method_name: str = "get_a_custom_object"
 
         if not custom_object_id or not isinstance(custom_object_id, str):
             return ToolError(
@@ -76,9 +77,10 @@ def register_custom_object_tools(mcp: FastMCP, graphql_client: GraphQLClient) ->
         }
 
         try:
-            result = await graphql_client.execute_async(
-                query=A_CUSTOM_OBJECT_QUERY, variables=variables
-            )
+            result: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                    logger, method_name, graphql_client, query=A_CUSTOM_OBJECT_QUERY, variables=variables)
+            if isinstance   (result, ToolError):
+                return result
 
             # Check for no result returned before checking if there is "errors" key in the result dictionary
             if result is None:
@@ -86,6 +88,7 @@ def register_custom_object_tools(mcp: FastMCP, graphql_client: GraphQLClient) ->
                     message="No custom object found or invalid custom object id",
                     suggestions=[
                         "Verify the custom object exists",
+                        "Check if you have permission to access this custom object",
                     ],
                 )
 

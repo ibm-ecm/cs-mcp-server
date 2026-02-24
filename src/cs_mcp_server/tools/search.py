@@ -16,7 +16,7 @@ from logging import Logger
 
 
 import logging
-from typing import Any, List, Union, Optional
+from typing import Any, List, Union, Optional, Dict
 from mcp.server.fastmcp import FastMCP
 from cs_mcp_server.cache.metadata import MetadataCache
 from cs_mcp_server.cache.metadata_loader import (
@@ -27,9 +27,10 @@ from cs_mcp_server.utils.common import (
     ToolError,
     CachePropertyDescription,
 )
-from cs_mcp_server.client.graphql_client import GraphQLClient
+from cs_mcp_server.client.graphql_client import GraphQLClient, graphql_client_execute_async_wrapper
 from cs_mcp_server.utils.model.core import DocumentMatch, DocumentFilingMatch
 from cs_mcp_server.utils.scoring import tokenize, word_similarity
+from cs_mcp_server.utils.utils import process_search_parameters
 from cs_mcp_server.utils.constants import (
     DEFAULT_DOCUMENT_CLASS,
     EXACT_SYMBOLIC_NAME_MATCH_SCORE,
@@ -188,7 +189,7 @@ def register_search_tools(
     @mcp.tool(
         name="get_searchable_property_descriptions",
     )
-    def get_searchable_property_descriptions(
+    async def get_searchable_property_descriptions(
         class_symbolic_name: str,
     ) -> Union[List[CachePropertyDescription], ToolError]:
         """
@@ -198,7 +199,7 @@ def register_search_tools(
 
         :returns: A list of CachePropertyDescription objects for properties that are searchable
         """
-        class_metadata = get_class_metadata_tool(
+        class_metadata = await get_class_metadata_tool(
             graphql_client=graphql_client,
             class_symbolic_name=class_symbolic_name,
             metadata_cache=metadata_cache,
@@ -219,7 +220,7 @@ def register_search_tools(
     @mcp.tool(
         name="repository_object_search",
     )
-    async def get_repository_object_main(
+    async def repository_object_search (
         search_parameters: SearchParameters,
     ) -> dict | ToolError:
         """
@@ -228,7 +229,7 @@ def register_search_tools(
         2. get_searchable_property_descriptions to get a list of valid property_name for search_properties
 
         Description:
-        This tool will execute a request to search for a repository object(s).
+        This tool retrieves repository objects other than Document instances.
 
         :param search_parameters (SearchParameters): parameters for the searching including the object being searched for and any search conditions.
 
@@ -239,119 +240,8 @@ def register_search_tools(
                     - label (str): The name of the property.
                     - value (str): The value of the property.
         """
-        # First, get the class metadata from the cache
-        class_data = get_class_metadata_tool(
-            graphql_client, search_parameters.search_class, metadata_cache
-        )
+        return await get_repository_object_main   (search_parameters, graphql_client, metadata_cache)
 
-        # Check if we got an error instead of class data
-        if isinstance(class_data, ToolError):
-            return class_data
-
-        # Extract property information from the class data
-        return_properties = []
-        property_types = {}
-
-        for prop in class_data.property_descriptions:
-            # Skip properties with LIST cardinality or OBJECT data type
-            if (
-                prop.cardinality == CARDINALITY_LIST
-                or prop.data_type == DATA_TYPE_OBJECT
-            ):
-                continue
-
-            property_name = prop.symbolic_name
-            return_properties.append(property_name)
-            property_types[property_name] = prop.data_type
-
-        return_properties_string = ", ".join(
-            [f'"{item}"' for item in return_properties]
-        )
-        return_properties_string = f"[{return_properties_string}]"
-
-        # Process search conditions
-        query_conditions = []
-        for item in search_parameters.search_properties:
-            try:
-                prop_name = item.property_name
-            except AttributeError:
-                return {"ERROR": "search_properties missing 'property_name' key"}
-            try:
-                prop_value = item.property_value.replace("*", "")
-            except AttributeError:
-                return {"ERROR": "search_properties missing 'property_value' key"}
-            try:
-                operator = item.operator.value
-            except AttributeError:
-                return {"ERROR": "search_properties missing 'operator' key"}
-
-            if not all([prop_name, prop_value, operator]):
-                print(f"Skipping invalid filter item: {item}")
-                continue
-
-            # Get the data type of the property
-            data_type = property_types.get(
-                prop_name, DATA_TYPE_STRING
-            )  # Default to STRING if not found
-
-            # Format the value according to its data type
-            formatted_value = format_value_by_type(prop_value, data_type)
-
-            # Get the appropriate SQL operator
-
-            # Handle string operations
-            if data_type == DATA_TYPE_STRING:
-                if operator.upper() == OPERATOR_CONTAINS:
-                    operator = SQL_LIKE_OPERATOR
-                    formatted_value = f"'%{prop_value}%'"
-                elif operator.upper() == OPERATOR_STARTS:
-                    operator = SQL_LIKE_OPERATOR
-                    formatted_value = f"'{prop_value}%'"
-                elif operator.upper() == OPERATOR_ENDS:
-                    operator = SQL_LIKE_OPERATOR
-                    formatted_value = f"'%{prop_value}'"
-
-            condition_string = f"{prop_name} {operator} {formatted_value}"
-            query_conditions.append(condition_string)
-
-        search_properties_string = " AND ".join(query_conditions)
-
-        query = """
-        query repositoryObjectsSearch($object_store_name: String!,
-            $class_name: String!, $where_statement: String!, $return_props: [String!]){
-            repositoryObjects(
-            repositoryIdentifier: $object_store_name,
-            from: $class_name,
-            where: $where_statement
-            ) {
-            independentObjects {
-                properties (includes: $return_props){
-                label
-                value
-                }
-            }
-            }
-        }
-        """
-        var = {
-            "object_store_name": graphql_client.object_store,
-            "where_statement": search_properties_string,
-            "class_name": search_parameters.search_class,
-            "return_props": return_properties,
-        }
-
-        try:
-            response = await graphql_client.execute_async(query=query, variables=var)
-            return response  # Return response only if no exception occurs
-        except Exception as e:
-            return ToolError(
-                message=f"Error executing search: {str(e)}",
-                suggestions=[
-                    "Check that all property names are valid for the class",
-                    "Ensure property values match the expected data types",
-                    "Verify that the operators are appropriate for the property data types",
-                ],
-            )
 
     @mcp.tool(
         name="lookup_documents_by_name",
@@ -381,7 +271,7 @@ def register_search_tools(
         if not class_symbolic_name:
             class_symbolic_name = DEFAULT_DOCUMENT_CLASS
 
-        class_data = get_class_metadata_tool(
+        class_data = await get_class_metadata_tool(
             graphql_client,
             class_symbolic_name=class_symbolic_name,
             metadata_cache=metadata_cache,
@@ -447,12 +337,11 @@ def register_search_tools(
 
         docs: list[dict]
         try:
-            response = await graphql_client.execute_async(
-                query=query_text, variables=var
-            )
-            if "errors" in response:
-                logger.error("GraphQL error: %s", response["errors"])
-                return ToolError(message=f"{method_name} failed: {response['errors']}")
+            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=query_text, variables=var)
+            if isinstance   (response, ToolError):
+                return response
+                
             docs = response["data"]["documents"]["documents"]
         except Exception as e:
             return ToolError(
@@ -539,7 +428,7 @@ def register_search_tools(
         if not class_symbolic_name:
             class_symbolic_name = DEFAULT_DOCUMENT_CLASS
 
-        class_data = get_class_metadata_tool(
+        class_data = await get_class_metadata_tool(
             graphql_client,
             class_symbolic_name=class_symbolic_name,
             metadata_cache=metadata_cache,
@@ -602,14 +491,11 @@ def register_search_tools(
 
             intermediate_folds: list[dict]
             try:
-                interresponse: dict[str, Any] = await graphql_client.execute_async(
-                    query=intermediate_query_text, variables=intermediate_var
-                )
-                if "errors" in interresponse:
-                    logger.error("GraphQL error: %s", interresponse["errors"])
-                    return ToolError(
-                        message=f"{method_name} failed: {interresponse['errors']}"
-                    )
+                interresponse: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+	                logger, method_name, graphql_client, query=intermediate_query_text, variables=intermediate_var)
+                if isinstance   (interresponse, ToolError):
+                    return interresponse
+                
                 intermediate_folds = interresponse["data"]["folders"]["folders"]
             except Exception as e:
                 return ToolError(
@@ -729,13 +615,11 @@ def register_search_tools(
 
         filings: list[dict]
         try:
-            response: dict[str, Any] = await graphql_client.execute_async(
-                query=document_filings_query_text, variables=filings_var
-            )
-            if "errors" in response:
-                errors = response["errors"]
-                logger.error("GraphQL error: %s", errors)
-                return ToolError(message=f"{method_name} failed: {errors}")
+            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=document_filings_query_text, variables=filings_var)
+            if isinstance   (response, ToolError):
+                return response
+	                
             filings = response["data"]["repositoryObjects"]["independentObjects"]
         except Exception as e:
             return ToolError(
@@ -809,5 +693,64 @@ def register_search_tools(
                 "Try using different keywords",
                 "Check if the keywords are spelled correctly",
                 "Ask the user for the specific document they want to use",
+            ],
+        )
+
+
+async def get_repository_object_main (
+    search_parameters: SearchParameters,
+    graphql_client: GraphQLClient,
+    metadata_cache: MetadataCache,
+    additional_filter_string: str = "",
+) -> dict | ToolError:    
+    # Process search parameters using the utility function
+    result = await process_search_parameters(
+        graphql_client, metadata_cache, search_parameters
+    )
+
+    # Check if we got an error
+    if isinstance(result, ToolError):
+        return result
+
+    # Unpack the result tuple
+    search_properties_string, return_properties = result
+    if (additional_filter_string):
+        search_properties_string = f"{search_properties_string} and {additional_filter_string}" if search_properties_string else additional_filter_string
+
+    query = """
+    query repositoryObjectsSearch($object_store_name: String!,
+        $class_name: String!, $where_statement: String!, $return_props: [String!]){
+        repositoryObjects(
+        repositoryIdentifier: $object_store_name,
+        from: $class_name,
+        where: $where_statement
+        ) {
+        independentObjects {
+            properties (includes: $return_props){
+            id
+            label
+            value
+            }
+        }
+        }
+    }
+    """
+    var = {
+        "object_store_name": graphql_client.object_store,
+        "where_statement": search_properties_string,
+        "class_name": search_parameters.search_class,
+        "return_props": return_properties,
+    }
+
+    try:
+        response = await graphql_client.execute_async(query=query, variables=var)
+        return response  # Return response only if no exception occurs
+    except Exception as e:
+        return ToolError(
+            message=f"Error executing search: {str(e)}",
+            suggestions=[
+                "Check that all property names are valid for the class",
+                "Ensure property values match the expected data types",
+                "Verify that the operators are appropriate for the property data types",
             ],
         )

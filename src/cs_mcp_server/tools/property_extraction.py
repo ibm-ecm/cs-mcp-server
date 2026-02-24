@@ -78,7 +78,7 @@ def register_property_extraction_tools(
 
         class_name = response["data"]["document"]["className"]
 
-        properties = get_class_specific_property_names(
+        properties = await get_class_specific_property_names(
             graphql_client=graphql_client,
             metadata_cache=metadata_cache,
             class_name=class_name,

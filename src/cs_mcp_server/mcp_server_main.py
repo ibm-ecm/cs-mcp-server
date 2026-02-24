@@ -45,6 +45,7 @@ from cs_mcp_server.tools.property_extraction import register_property_extraction
 from cs_mcp_server.tools.classification import register_classification_tools
 from cs_mcp_server.resources.dynamic_resources import register_dynamic_resources
 from cs_mcp_server.tools.custom_objects import register_custom_object_tools
+from cs_mcp_server.tools.advanced_search import register_advanced_search_tools
 
 # Configure logging with dynamic level from environment variable
 log_level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
@@ -67,6 +68,7 @@ class ServerType(str, Enum):
 
     CORE = "core"
     VECTOR_SEARCH = "vector-search"
+    AI__DOCUMENT_INSIGHT = "ai-document-insight"
     LEGAL_HOLD = "legal-hold"
     PROPERTY_EXTRACTION_AND_CLASSIFICATION = "property-extraction-and-classification"
     FULL = "full"
@@ -147,7 +149,7 @@ def initialize_graphql_client():
     zeniam_iam_grant_type = os.environ.get("ZENIAM_IAM_GRANT_TYPE", "")
     zeniam_iam_scope = os.environ.get("ZENIAM_IAM_SCOPE", "")
     zeniam_iam_client_id = os.environ.get("ZENIAM_IAM_CLIENT_ID", "")
-    zeniam_iam_cient_secret = os.environ.get("ZENIAM_IAM_CLIENT_SECRET", "")
+    zeniam_iam_client_secret = os.environ.get("ZENIAM_IAM_CLIENT_SECRET", "")
     zeniam_iam_user_name = os.environ.get("ZENIAM_IAM_USER", "")
     zeniam_iam_user_password = os.environ.get("ZENIAM_IAM_PASSWORD", "")
     zeniam_zen_exchange_ssl = parse_ssl_flag(
@@ -193,7 +195,7 @@ def initialize_graphql_client():
         ZenIAM_iam_grant_type=zeniam_iam_grant_type,
         ZenIAM_iam_scope=zeniam_iam_scope,
         ZenIAM_iam_client_id=zeniam_iam_client_id,
-        ZenIAM_iam_client_secret=zeniam_iam_cient_secret,
+        ZenIAM_iam_client_secret=zeniam_iam_client_secret,
         ZenIAM_iam_user_name=zeniam_iam_user_name,
         ZenIAM_iam_user_password=zeniam_iam_user_password,
         ZenIAM_zen_url=zeniam_zen_url,
@@ -255,13 +257,14 @@ def register_server_tools(
         register_folder_tools(mcp, graphql_client)
         register_class_tools(mcp, graphql_client, metadata_cache)
         register_search_tools(mcp, graphql_client, metadata_cache)
-        register_annotation_tools(mcp, graphql_client)
-        register_custom_object_tools(mcp, graphql_client)
+        # register_annotation_tools(mcp, graphql_client)
+        # register_custom_object_tools(mcp, graphql_client)
         logger.info("Core tools registered")
 
-    elif server_type == ServerType.VECTOR_SEARCH:
+    elif server_type == ServerType.AI__DOCUMENT_INSIGHT:
+        register_advanced_search_tools(mcp, graphql_client, metadata_cache)
         register_vector_search_tool(mcp, graphql_client)
-        logger.info("Vector search tools registered")
+        logger.info("AI Document Insight tools registered")
 
     elif server_type == ServerType.LEGAL_HOLD:
         register_hold_tools(mcp, graphql_client)
@@ -277,10 +280,13 @@ def register_server_tools(
         register_folder_tools(mcp, graphql_client)
         register_class_tools(mcp, graphql_client, metadata_cache)
         register_search_tools(mcp, graphql_client, metadata_cache)
-        register_annotation_tools(mcp, graphql_client)
-        register_custom_object_tools(mcp, graphql_client)
+        # register_annotation_tools(mcp, graphql_client)
+        # register_custom_object_tools(mcp, graphql_client)
         register_vector_search_tool(mcp, graphql_client)
-        register_legalhold(mcp, graphql_client)
+        register_advanced_search_tools(mcp, graphql_client, metadata_cache)
+        register_annotation_tools(mcp, graphql_client)
+
+        register_hold_tools(mcp, graphql_client)
         register_property_extraction_tools(mcp, graphql_client, metadata_cache)
         register_classification_tools(mcp, graphql_client, metadata_cache)
         logger.info("All tools registered")
@@ -358,9 +364,9 @@ def main_core() -> None:
     _run_server(ServerType.CORE)
 
 
-def main_vector_search() -> None:
-    """Entry point for vector search MCP server."""
-    _run_server(ServerType.VECTOR_SEARCH)
+def main_ai_document_insight() -> None:
+    """Entry point for AI Document Insight MCP Server."""
+    _run_server(ServerType.AI__DOCUMENT_INSIGHT)
 
 
 def main_legal_hold() -> None:

@@ -2,11 +2,12 @@
 
 ## Overview
 
-The IBM Content Services MCP Server provides a standardized interface that enables IBM FileNet Content Manager (FNCM) capabilities to be used by AI models. The server is available in three specialized configurations to support different workflows:
+The IBM Content Services MCP Server provides a standardized interface that enables IBM FileNet Content Manager (FNCM) capabilities to be used by AI models. The server is available in four specialized configurations to support different workflows:
 
 - **Core Server**: Comprehensive document and content management operations
-- **Property Extraction and Classification Server (Preview)**: AI-powered document analysis and classification
-- **Legal Hold Server (Preview)**: Legal hold and compliance management
+- **Property Extraction and Classification Server**: Document analysis for property extraction and classification
+- **Legal Hold Server**: Legal hold management
+- **AI Document Insight Server (Preview)**: Uses virtual table capabilities for Content Assistant vector search combined with property/metadata search, along with document summarization, comparison, and Q&A
 
 Each server can be deployed independently or in combination to support your specific use cases.
 
@@ -23,12 +24,11 @@ Each server can be deployed independently or in combination to support your spec
 - Folder operations and document filing
 - Search and retrieval across the repository
 - Metadata and class management
-- Document annotations
 - Resources support for exposing documents as LLM context
 
-### Property Extraction and Classification Server (`property-extraction-and-classification-cs-mcp-server`) - Preview
+### Property Extraction and Classification Server (`property-extraction-and-classification-cs-mcp-server`)
 
-**Purpose**: AI-powered document analysis and classification
+**Purpose**: Document analysis for property extraction and classification
 
 **Dependencies**: Requires Core Server for document update operations (e.g., `update_document_properties`)
 
@@ -37,15 +37,29 @@ Each server can be deployed independently or in combination to support your spec
 - Document classification and reclassification workflows
 - Content-based metadata enrichment
 
-### Legal Hold Server (`legal-hold-cs-mcp-server`) - Preview
+### Legal Hold Server (`legal-hold-cs-mcp-server`)
 
-**Purpose**: Legal hold and compliance management
+**Purpose**: Legal hold management
 
 **Use Cases**:
 - Creating and managing legal holds
 - Placing documents and objects under hold
 - Tracking held objects
-- Compliance and litigation support workflows
+
+### AI Document Insight Server (`ai-document-insight-cs-mcp-server`) - Preview
+
+**Purpose**: Uses virtual table capabilities for Content Assistant vector search combined with property/metadata search, along with document summarization, comparison, and Q&A
+
+**Dependencies**:
+- Requires Core Server for document operations
+- Requires Persistent Text Extract add-on
+- Requires Content Assistant add-on
+- Requires FileNet 5.7.0 IF003 or later
+
+**Use Cases**:
+- Content-based document search with metadata filtering using Content Assistant API vector search
+- Content Assistant API document summaries
+- Content Assistant API document comparison and analysis
 
 ---
 
@@ -53,13 +67,13 @@ Each server can be deployed independently or in combination to support your spec
 
 ### Core Server Tools
 
-The Core Server provides 28 tools organized into the following categories:
+The Core Server provides 26 tools organized into the following categories:
 
 #### Document Management (11 tools)
 
 - **get_document_versions**: Retrieves a document's version history, including major and minor version numbers and document IDs for each version.
 
-- **get_document_text_extract**: Extracts text content from a document by retrieving its text extract annotations. If multiple text extracts are found, they are concatenated. **Note:** This functionality requires the Persistent Text Extract add-on to be installed in your object store. See the [Prerequisites](#prerequisites) section for more details.
+- **get_document_text_extract**: Extracts text content from a document by retrieving its text extract annotations. If multiple text extracts are found, they are concatenated. **IMPORTANT:** This functionality requires the Persistent Text Extract add-on to be installed in your object store. See the [Prerequisites](#prerequisites) section for more details.
 
 - **create_document**: Creates a new document in the content repository with specified properties. Can upload files as the document's content if file paths are provided. Requires first calling determine_class and get_class_property_descriptions.
 
@@ -103,27 +117,19 @@ The Core Server provides 28 tools organized into the following categories:
 
 - **get_class_property_descriptions**: Retrieves detailed descriptions of all properties for a specified class.
 
-#### Search (4 tools)
+#### Search (5 tools)
 
 - **get_searchable_property_descriptions**: Retrieves descriptions of properties that can be used in search operations.
 
 - **repository_object_search**: Searches for repository objects based on specified criteria.
 
+- **document_search**: Searches for documents based on content and/or metadata criteria using full-text CBR search. Can combine content-based search with property filters for precise document discovery. Returns only released versions of documents. Special characters in content search terms are automatically escaped.
+
 - **lookup_documents_by_name**: Searches for documents by matching keywords against document names. Returns a ranked list of matching documents with confidence scores. Useful when you know part of a document's name but not its exact ID or path.
 
 - **lookup_documents_by_path**: Searches for documents based on their location in the folder hierarchy. Matches keywords against folder names and document containment names at each path level. Particularly useful when the user describes a document using path separators (e.g., "/Folder1/Subfolder/document").
 
-#### Annotations (2 tools)
-
-- **get_document_annotations**: Retrieves all annotations associated with a document, including their IDs, names, descriptive text, and content elements.
-
-- **get_annotation**: Retrieves a specific annotation by its ID.
-
-#### Custom Objects (1 tool)
-
-- **get_custom_object**: Retrieves a custom object from the repository by ID or path.
-
-### Property Extraction and Classification Server Tools (Preview)
+### Property Extraction and Classification Server Tools
 
 The Property Extraction and Classification Server provides 2 specialized tools for AI-powered document workflows:
 
@@ -131,7 +137,7 @@ The Property Extraction and Classification Server provides 2 specialized tools f
 
 - **list_all_classes**: Lists all available classes for a specific root class type. Essential for document reclassification workflows where you need to match document content to the most appropriate class.
 
-### Legal Hold Server Tools (Preview)
+### Legal Hold Server Tools
 
 The Legal Hold Server provides 6 tools for legal compliance management:
 
@@ -147,6 +153,18 @@ The Legal Hold Server provides 6 tools for legal compliance management:
 
 - **get_holds_by_name**: Searches for legal holds by their display name.
 
+### AI Document Insight Server Tools (Preview)
+
+The AI Document Insight Server provides 4 specialized tools that leverage virtual table capabilities for Content Assistant operations:
+
+- **document_smart_search**: Performs a hybrid search combining vector (semantic) search and metadata filtering to find documents. Use this to find relevant documents based on meaning rather than just keywords. Returns only released versions of documents ranked by a GenaiScore.
+
+- **document_quick_summary**: Generates a concise AI-powered summary for one or more provided document IDs. Use this to give the user a quick overview of content without reading the full text.
+
+- **document_compare_insights**: Compares exactly two documents to identify similarities, differences, and version changes. Returns an AI-generated analysis.
+
+- **document_qa_global**: Answers natural language questions by scanning the entire document repository. Use this for broad questions where the specific documents are not known or when looking for patterns across the entire document repository.
+
 ---
 
 ## Resources (Core Server Only)
@@ -155,7 +173,7 @@ The Legal Hold Server provides 6 tools for legal compliance management:
 
 Resources provide read-only access to document content for LLM context. Documents in a configured folder are automatically exposed as MCP resources, allowing AI models to reference them during conversations without explicit tool calls.
 
-> **Note:** Resources functionality requires the **Persistent Text Extract Add-on** to be installed in your object store to retrieve document content. See the [Prerequisites](#prerequisites) section for installation details.
+> **Important:** Resources functionality requires the **Persistent Text Extract Add-on** to be installed in your object store to retrieve document content. See the [Prerequisites](#prerequisites) section for installation details.
 
 ### Configuration
 
@@ -232,11 +250,35 @@ Some MCP clients have limitations that affect which tools can be used. The follo
   - on macOS: `brew install uv`
   - on Windows: see link above
 - Access to a FileNet CPE server with Content Services GraphQL API (CS-GQL) installed
-- **Persistent Text Extract Add-on** must be installed in your object store if you want to use document content retrieval functionality
-  - This add-on enables the extraction and storage of text content from documents
-  - Required for: Core Server's `get_document_text_extract` tool, Resources functionality, and Property Extraction Server's `property_extraction` tool
-  - Without this add-on, these features will not return document content
-  - For installation instructions, refer to the [IBM Documentation on Installing the Persistent Text Add-on](https://www.ibm.com/docs/en/content-assistant?topic=extraction-installing-persistent-text-add)
+
+#### Required Add-ons
+
+> **Important:** The following add-ons must be installed in your FileNet object store for specific server functionality:
+
+**Persistent Text Extract Add-on** (Required for Core, Property Extraction, and AI Document Insight Servers)
+- Enables extraction and storage of text content from documents
+- **Required for:**
+  - Core Server: `get_document_text_extract` tool and Resources functionality
+  - Property Extraction and Classification Server: `property_extraction` tool
+  - AI Document Insight Server: All tools (`document_smart_search`, `document_quick_summary`, `document_compare_insights`, `document_qa_global`)
+- Without this add-on, document content retrieval features will not work
+- For installation instructions, refer to the [IBM Documentation on Installing the Persistent Text Add-on](https://www.ibm.com/docs/en/content-assistant?topic=extraction-installing-persistent-text-add)
+
+**Content Assistant Add-on** (Required for AI Document Insight Server only)
+- Provides AI-powered search, summarization, comparison, and Q&A capabilities
+- **Required for:** AI Document Insight Server (all tools)
+- Includes vector search and GenAI model integration
+- For installation instructions, refer to the IBM Content Assistant documentation
+
+**FNCM Deployment Version Requirements**
+
+- **Version 5.5.8 or later** (Required for Core, Legal Hold, and Property Extraction and Classification Servers)
+  - Provides the base GraphQL API support required for core content management operations
+  - **Required for:** Core Server, Legal Hold Server, and Property Extraction and Classification Server (all tools)
+
+- **Version 5.7.0 IF003 or later** (Required for AI Document Insight Server only)
+  - Provides GraphQL virtual table support required for AI document insight operations
+  - **Required for:** AI Document Insight Server (all tools)
 
 ### Configuration
 
@@ -401,7 +443,7 @@ ZENIAM_IAM_PASSWORD=your_user_password
    }
    ```
 
-   **Option 3: Multi-Server Setup (Core + Property Extraction + Legal Hold)**
+   **Option 3: Multi-Server Setup (Core + Property Extraction + Legal Hold + AI Document Insight)**
    ```json
    {
      "mcpServers": {
@@ -439,6 +481,20 @@ ZENIAM_IAM_PASSWORD=your_user_password
            "--from",
            "git+https://github.com/ibm-ecm/ibm-content-services-mcp-server",
            "legal-hold-cs-mcp-server"
+         ],
+         "env": {
+           "USERNAME": "your_username",
+           "PASSWORD": "your_password",
+           "SERVER_URL": "https://your-graphql-server/content-services-graphql/graphql",
+           "OBJECT_STORE": "your_object_store"
+         }
+       },
+       "ai-document-insight-cs-mcp-server": {
+         "command": "uvx",
+         "args": [
+           "--from",
+           "git+https://github.com/ibm-ecm/ibm-content-services-mcp-server",
+           "ai-document-insight-cs-mcp-server"
          ],
          "env": {
            "USERNAME": "your_username",
@@ -560,6 +616,10 @@ For creating connections using the ADK CLI, please refer to the [official docume
     ```
     uvx --from git+https://github.com/ibm-ecm/ibm-content-services-mcp-server legal-hold-cs-mcp-server
     ```
+  - AI Document Insight Server:
+    ```
+    uvx --from git+https://github.com/ibm-ecm/ibm-content-services-mcp-server ai-document-insight-cs-mcp-server
+    ```
 
 - Click **Connect**
 - If you see "Connection successful", click **Done**
@@ -624,6 +684,11 @@ USERNAME=your_username PASSWORD=your_password SERVER_URL=https://your-graphql-se
 USERNAME=your_username PASSWORD=your_password SERVER_URL=https://your-graphql-server/content-services-graphql/graphql OBJECT_STORE=your_object_store uvx --from /path/to/your/cs-mcp-server legal-hold-cs-mcp-server
 ```
 
+**AI Document Insight Server:**
+```bash
+USERNAME=your_username PASSWORD=your_password SERVER_URL=https://your-graphql-server/content-services-graphql/graphql OBJECT_STORE=your_object_store uvx --from /path/to/your/cs-mcp-server ai-document-insight-cs-mcp-server
+```
+
 ### Integration with AI Agents
 
 The Content Services MCP Servers can be integrated with AI Agents that support the MCP protocol. Depending on which server(s) you deploy, the AI Agent can:
@@ -634,8 +699,7 @@ The Content Services MCP Servers can be integrated with AI Agents that support t
 3. Create, update, check-in, and check-out documents
 4. Manage folders and document classifications
 5. Execute searches
-6. Get document annotations
-7. Access resources for LLM context
+6. Access resources for LLM context
 
 **Property Extraction and Classification Server capabilities:**
 1. Extract property values from document content using AI
@@ -645,6 +709,12 @@ The Content Services MCP Servers can be integrated with AI Agents that support t
 1. Create and manage legal holds
 2. Place objects under hold
 3. Track and query held objects
+
+**AI Document Insight Server capabilities:**
+1. Perform AI-powered hybrid searches combining vector search with metadata filtering
+2. Generate document summaries using GenAI
+3. Compare documents and analyze differences
+4. Answer natural language questions across the entire document repository
 
 ### Example Workflows
 

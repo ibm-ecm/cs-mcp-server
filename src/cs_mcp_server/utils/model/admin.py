@@ -102,7 +102,7 @@ class HoldRelationship(BaseModel):
     @classmethod
     def create_an_instance(cls, graphQL_changed_object_dict: dict):
         properties = graphQL_changed_object_dict["properties"]
-        hold_relationship = {} # initiase a dictionary to hold the hold relationship object
+        hold_relationship = {} # initialize a dictionary to hold the hold relationship object
         for prop in properties:
             if prop["id"] == "HeldObject":
                 hold_relationship ["held_id"] = prop["value"]["identifier"]

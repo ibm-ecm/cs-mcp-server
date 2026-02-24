@@ -28,7 +28,7 @@ from logging import Logger
 import traceback
 
 
-def get_class_specific_property_names(
+async def get_class_specific_property_names(
     graphql_client: GraphQLClient, metadata_cache: MetadataCache, class_name: str
 ) -> Union[List[dict], ToolError]:
     """
@@ -44,7 +44,7 @@ def get_class_specific_property_names(
               descriptiveText, dataType, and cardinality, or ToolError
     """
     # Get class metadata
-    class_metadata = get_class_metadata_tool(
+    class_metadata = await get_class_metadata_tool(
         graphql_client=graphql_client,
         class_symbolic_name=class_name,
         metadata_cache=metadata_cache,
@@ -177,45 +177,142 @@ async def get_document_text_extract_content(
 
     return all_text_content
 
-async def graphql_client_execute_async_wrapper (
-    logger: Logger,
-    method_name: str,
-    graphql_client: GraphQLClient, 
-    query: str, variables: Optional[Dict[str, Any]] = None
-    ) -> Union [ToolError, Dict[str, Any]]:
-    "Wrapper for graphql_client.execute_async to handle errors, timing and logging of GraphQL queries."
-    
-    start_time = time.perf_counter()
-    response = None
-    try:
-        logger.debug(f"{method_name}, GraphQL query: {query}, GraphQL variables: {variables} ") 
-        response = await graphql_client.execute_async(query=query, variables=variables)
-        if "errors" in response:
-            error_message = response["errors"]
-            logger.error(f"{method_name} failed: {error_message}")
-            return ToolError(   message=f"{method_name} failed: got err {error_message}. Trace available in server logs.", )    
 
-        if "error" in response:
-            error_type = response.get("error_type", "")  # Get error_type if it exists, otherwise empty string               
-            error_message = f"error_type = {error_type}, message = {response["message"]}"
-            logger.error(f"{method_name} failed: {error_message}")
-            return ToolError(   message=f"{method_name} failed: got err {error_message}. Trace available in server logs.", )    
+async def process_search_parameters(
+    graphql_client: GraphQLClient,
+    metadata_cache: MetadataCache,
+    search_parameters,
+) -> Union[tuple, ToolError]:
+    """
+    Process search parameters to generate search conditions and return properties.
 
-        if "data" not in response or response["data"] is None:
-            error_message = f" No 'data' returned from GraphQL query"
-            logger.error(f"{method_name} failed: {error_message}")
-            return ToolError(   message=f"{method_name} failed: got err {error_message}. Trace available in server logs.", )    
+    This function retrieves class metadata, extracts property information,
+    and formats search conditions based on the provided search parameters.
 
-        return response 
-    except Exception as ex:
-        error_traceback = traceback.format_exc(limit=TRACEBACK_LIMIT)
-        logger.error(
-                f"{method_name} failed: {ex.__class__.__name__} - {str(ex)}\n{error_traceback}"
+    :param graphql_client: GraphQL client instance for accessing object store info
+    :param metadata_cache: Metadata cache instance for retrieving class information
+    :param search_parameters: SearchParameters object containing:
+        - search_class: The class name to search
+        - search_properties: List of property search conditions
+    :returns: A tuple of (search_properties_string, return_properties) where:
+        - search_properties_string: SQL WHERE clause string
+        - return_properties: List of property names to return
+        Or ToolError if processing fails
+    """
+    from cs_mcp_server.utils.constants import (
+        DATA_TYPE_STRING,
+        DATA_TYPE_INTEGER,
+        DATA_TYPE_LONG,
+        DATA_TYPE_FLOAT,
+        DATA_TYPE_DOUBLE,
+        DATA_TYPE_BOOLEAN,
+        DATA_TYPE_DATETIME,
+        DATA_TYPE_DATE,
+        DATA_TYPE_TIME,
+        DATA_TYPE_OBJECT,
+        CARDINALITY_LIST,
+        SQL_LIKE_OPERATOR,
+        OPERATOR_CONTAINS,
+        OPERATOR_STARTS,
+        OPERATOR_ENDS,
+    )
+
+    # Helper function to format values by type
+    def format_value_by_type(value, data_type):
+        """Format a value according to its data type."""
+        # Return value directly for numeric, boolean, and date/time types
+        if data_type in [
+            DATA_TYPE_INTEGER,
+            DATA_TYPE_LONG,
+            DATA_TYPE_FLOAT,
+            DATA_TYPE_DOUBLE,
+            DATA_TYPE_BOOLEAN,
+            DATA_TYPE_DATETIME,
+            DATA_TYPE_DATE,
+            DATA_TYPE_TIME,
+        ]:
+            return value
+        # Default to string (quoted) for all other types
+        return f"'{value}'"
+
+    # Get the class metadata from the cache
+    class_data = await get_class_metadata_tool(
+        graphql_client, search_parameters.search_class, metadata_cache
+    )
+
+    # Check if we got an error instead of class data
+    if isinstance(class_data, ToolError):
+        return class_data
+
+    # Extract property information from the class data
+    return_properties = []
+    property_types = {}
+
+    for prop in class_data.property_descriptions:
+        # Skip properties with LIST cardinality or OBJECT data type
+        if prop.cardinality == CARDINALITY_LIST or prop.data_type == DATA_TYPE_OBJECT:
+            continue
+
+        property_name = prop.symbolic_name
+        return_properties.append(property_name)
+        # logger.info(f"Adding property {property_name} to return properties")
+        property_types[property_name] = prop.data_type
+
+    # logger.info(f"Return properties: {return_properties}")
+    # Process search conditions
+    query_conditions = []
+    for item in search_parameters.search_properties:
+        try:
+            prop_name = item.property_name
+        except AttributeError:
+            return ToolError(
+                message="search_properties missing 'property_name' key",
+                suggestions=["Ensure each search property has a 'property_name' field"],
+            )
+        try:
+            prop_value = item.property_value.replace("*", "")
+        except AttributeError:
+            return ToolError(
+                message="search_properties missing 'property_value' key",
+                suggestions=[
+                    "Ensure each search property has a 'property_value' field"
+                ],
+            )
+        try:
+            operator = item.operator.value
+        except AttributeError:
+            return ToolError(
+                message="search_properties missing 'operator' key",
+                suggestions=["Ensure each search property has an 'operator' field"],
             )
 
-        return ToolError(
-                message=f"{method_name} failed: got err {ex}. Trace available in server logs.",
-            )
-    finally:
-        logger.debug(f"{method_name}, GraphQL response (elapse {time.perf_counter() - start_time:.2f}s): {response}") 
+        if not all([prop_name, prop_value, operator]):
+            print(f"Skipping invalid filter item: {item}")
+            continue
 
+        # Get the data type of the property
+        data_type = property_types.get(
+            prop_name, DATA_TYPE_STRING
+        )  # Default to STRING if not found
+
+        # Format the value according to its data type
+        formatted_value = format_value_by_type(prop_value, data_type)
+
+        # Handle string operations
+        if data_type == DATA_TYPE_STRING:
+            if operator.upper() == OPERATOR_CONTAINS:
+                operator = SQL_LIKE_OPERATOR
+                formatted_value = f"'%{prop_value}%'"
+            elif operator.upper() == OPERATOR_STARTS:
+                operator = SQL_LIKE_OPERATOR
+                formatted_value = f"'{prop_value}%'"
+            elif operator.upper() == OPERATOR_ENDS:
+                operator = SQL_LIKE_OPERATOR
+                formatted_value = f"'%{prop_value}'"
+
+        condition_string = f"{prop_name} {operator} {formatted_value}"
+        query_conditions.append(condition_string)
+
+    search_properties_string = " AND ".join(query_conditions)
+
+    return (search_properties_string, return_properties)

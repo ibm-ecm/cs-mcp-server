@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-02-24
+
+### Added
+- Added AI Document Insight Server (`ai-document-insight-cs-mcp-server`) with 4 specialized tools:
+  - `document_smart_search`: Hybrid search combining vector (semantic) search with metadata filtering using Content Assistant API
+  - `document_quick_summary`: AI-powered document summarization for one or more documents
+  - `document_compare_insights`: Compare two documents to identify similarities, differences, and version changes
+  - `document_qa_global`: Answer natural language questions by scanning the entire document repository
+- Enhanced `document_search` tool in Core Server with improved content-based search using full-text CBR search
+  - Can combine content-based search with property filters for precise document discovery
+  - Returns only released versions of documents
+  - Automatically escapes special characters in search terms
+
+### Removed
+- Removed get annotaion and custom object tools from Core Server (low usage)
+
+### Fixed
+- Fixed GraphQL client async wrapper execution issues
+- Fixed import statement errors in document tools
+- Improved error message response if text extract does not exist.
+
 ## [1.0.2] - 2026-01-30
 
 ### Added
@@ -39,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Class and annotation management
 - SSL/TLS support with configurable verification
 
+[1.0.3]: https://github.com/ibm-ecm/ibm-content-services-mcp-server/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/ibm-ecm/ibm-content-services-mcp-server/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/ibm-ecm/ibm-content-services-mcp-server/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/ibm-ecm/ibm-content-services-mcp-server/releases/tag/v1.0.0

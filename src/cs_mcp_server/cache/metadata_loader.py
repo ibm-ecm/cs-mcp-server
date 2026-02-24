@@ -26,6 +26,7 @@ from cs_mcp_server.utils.common import (
     CachePropertyDescription,
     ToolError,
 )
+from cs_mcp_server.client.graphql_client import graphql_client_execute_async_wrapper
 
 # Logger for this module
 logger: Logger = logging.getLogger(__name__)
@@ -122,6 +123,7 @@ def get_root_class_description_tool(
                 descriptive_text=root_class_info.get("descriptiveText", ""),
                 property_descriptions=[],  # Empty list for now
                 name_property_symbolic_name=None,  # To be filled in when property descriptions loaded
+                is_CBR_enabled=None,  # To be filled in when class descriptions loaded
             )
 
             # Cache the root class under its own key (e.g., "Document" -> "Document")
@@ -141,6 +143,7 @@ def get_root_class_description_tool(
                 descriptive_text=subclass.get("descriptiveText", ""),
                 property_descriptions=[],  # Empty list for now
                 name_property_symbolic_name=None,  # To be filled in when property descriptions loaded
+                is_CBR_enabled=None,  # To be filled in when class descriptions loaded
             )
 
             metadata_cache.set_class_data(root_class_type, symbolic_name, class_data)
@@ -286,7 +289,7 @@ def discover_and_load_root_class(
     return True
 
 
-def get_class_metadata_tool(
+async def get_class_metadata_tool(
     graphql_client,
     class_symbolic_name: str,
     metadata_cache,
@@ -302,13 +305,14 @@ def get_class_metadata_tool(
     Returns:
         A ContentClassData object containing class metadata or a ToolError if an error occurs
     """
-
+    method_name = "get_class_metadata_tool"
     query = """
     query getClassMetadata($object_store_name: String!, $class_symbolic_name: String!) {
     classDescription(
         repositoryIdentifier: $object_store_name
         identifier: $class_symbolic_name
     ) {
+        isCBREnabled
         namePropertyIndex
         propertyDescriptions {
             symbolicName
@@ -330,6 +334,7 @@ def get_class_metadata_tool(
         repositoryIdentifier: $object_store_name
         identifier: $class_symbolic_name
     ) {
+        isCBREnabled
         namePropertyIndex
         propertyDescriptions {
             symbolicName
@@ -376,7 +381,10 @@ def get_class_metadata_tool(
     }
 
     try:
-        response = graphql_client.execute(query=initial_query, variables=variables)
+        response =  await graphql_client_execute_async_wrapper (logger, method_name, graphql_client,
+        query=initial_query, variables=variables)
+        if isinstance(response, ToolError):
+                return response
 
         # Check for errors in the response
         if "error" in response and response["error"]:
@@ -427,6 +435,7 @@ def get_class_metadata_tool(
         # Convert the GraphQL response to our model objects
         property_descriptions = []
         name_prop_idx: int | None = class_gql_data.get("namePropertyIndex", None)
+        is_CBR_enabled: bool | None = class_gql_data.get("isCBREnabled", None)
         name_prop_sym_name: str | None = None
         for idx, prop in enumerate(class_gql_data.get("propertyDescriptions", [])):
             prop_sym_name: str = prop.get("symbolicName")
@@ -449,6 +458,7 @@ def get_class_metadata_tool(
         # We already have class data, just update the properties
         existing_class_data.property_descriptions = property_descriptions
         existing_class_data.name_property_symbolic_name = name_prop_sym_name
+        existing_class_data.is_CBR_enabled = is_CBR_enabled
         content_class_data = existing_class_data
 
         # Return the ContentClassData object directly

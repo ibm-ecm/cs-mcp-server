@@ -23,7 +23,7 @@ from typing import  Any, Union, Dict
 
 from mcp.server.fastmcp import FastMCP
 
-from cs_mcp_server.client import GraphQLClient
+from cs_mcp_server.client.graphql_client import GraphQLClient, graphql_client_execute_async_wrapper
 from cs_mcp_server.utils import HoldRelationship, Hold, ToolError
 from cs_mcp_server.utils.constants import (
     CM_HOLD_CLASS,
@@ -32,7 +32,6 @@ from cs_mcp_server.utils.constants import (
     TRACEBACK_LIMIT,
 )
 from cs_mcp_server.utils.model.admin import HeldObject
-from cs_mcp_server.utils.utils import graphql_client_execute_async_wrapper
 
 
 # Logger for this module

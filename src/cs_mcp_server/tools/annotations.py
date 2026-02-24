@@ -14,11 +14,11 @@
 
 import logging
 import traceback
-from typing import Union
+from typing import Union, Dict, Any
 
 from mcp.server.fastmcp import FastMCP
 
-from cs_mcp_server.client.graphql_client import GraphQLClient
+from cs_mcp_server.client.graphql_client import GraphQLClient, graphql_client_execute_async_wrapper
 from cs_mcp_server.utils.constants import TRACEBACK_LIMIT
 from cs_mcp_server.utils import ToolError, Annotation
 
@@ -104,9 +104,10 @@ def register_annotation_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> No
         }
 
         try:
-            result = await graphql_client.execute_async(
-                query=ANNOTATIONS_QUERY, variables=variables
-            )
+            result: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
+                logger, method_name, graphql_client, query=ANNOTATIONS_QUERY, variables=variables)
+            if isinstance   (result, ToolError):
+                return result
 
             # Check for no result returned before checking if there is "errors" key in the result dictionary
             if result is None:
@@ -115,15 +116,6 @@ def register_annotation_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> No
                     suggestions=[
                         "Verify the document exists",
                         "Check if the document has any annotations",
-                    ],
-                )
-
-            # Check for GraphQL errors
-            if "errors" in result:
-                return ToolError(
-                    message=f"GraphQL error: {result['errors'][0]['message']}",
-                    suggestions=[
-                        "Verify the document ID exists",
                         "Check if you have permission to access this document",
                     ],
                 )

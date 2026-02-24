@@ -145,6 +145,9 @@ class CacheClassDescriptionData(ClassDescriptionData):
     property_descriptions: List[CachePropertyDescription] = Field(
         description="List of all properties of this class"
     )
+    is_CBR_enabled: Optional[bool] = Field(
+        description="Specifies whether this class is enabled for full text indexing (content-based retrieval)"
+    )
 
 
 class CachePropertyDescriptionBooleanData(CachePropertyDescription):

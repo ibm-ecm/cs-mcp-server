@@ -1,6 +1,6 @@
 [project]
 name = "cs-mcp-server"
-version = "1.0.2"
+version = "1.0.3"
 description = "Content Services MCP Server for FileNet Content Management"
 readme = "README.md"
 authors = [
@@ -25,6 +25,8 @@ dependencies = [
 
 [project.scripts]
 core-cs-mcp-server = "cs_mcp_server.mcp_server_main:main_core"
+vector-search-cs-mcp-server = "cs_mcp_server.mcp_server_main:main_vector_search"
+ai-document-insight-cs-mcp-server = "cs_mcp_server.mcp_server_main:main_ai_document_insight"
 legal-hold-cs-mcp-server = "cs_mcp_server.mcp_server_main:main_legal_hold"
 property-extraction-and-classification-cs-mcp-server = "cs_mcp_server.mcp_server_main:main_property_extraction_and_classification"
 

@@ -15,17 +15,25 @@
 import json
 import os
 import uuid
-from typing import Union
+from typing import Union, Dict, Any
 
 from mcp.server.fastmcp import FastMCP
 
-from cs_mcp_server.client.graphql_client import GraphQLClient
+from cs_mcp_server.client.graphql_client import (
+    GraphQLClient,
+    graphql_client_execute_async_wrapper,
+)
 from cs_mcp_server.utils.common import ToolError
 from cs_mcp_server.utils.constants import (
     DEFAULT_MAX_CHUNKS,
     DEFAULT_RELEVANCE_SCORE,
     GENAI_VECTOR_QUERY_CLASS,
 )
+from logging import Logger
+import logging
+
+# Logger for this module
+logger: Logger = logging.getLogger(__name__)
 
 # Environment variables for configuration
 MAX_CHUNKS = int(os.environ.get("MAX_CHUNKS", DEFAULT_MAX_CHUNKS))
@@ -33,13 +41,14 @@ RELEVANCE_SCORE = float(os.environ.get("RELEVANCE_SCORE", DEFAULT_RELEVANCE_SCOR
 
 
 def register_vector_search_tool(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
-    @mcp.tool(name="vector_search_tool")
-    async def vector_search_tool(prompt: str) -> Union[dict, ToolError]:
+    @mcp.tool(name="document_qa_global")
+    async def document_qa_global(prompt: str) -> Union[dict, ToolError]:
         """
-        Get document ids matching the prompt. Execute only if the user requests for vector search specifically.
+        Answers natural language questions by scanning the entire document repository. Use this for broad questions where the specific documents are not known or when looking for patterns across the entire document repository.
 
         :returns: A dict of doc ids
         """
+        method_name = "document_qa_global"
         max_chunks = MAX_CHUNKS
         query = """
             mutation createVectorQuery($repo:String!, $prompt:String!, $maxchunks:Int,
@@ -84,7 +93,13 @@ def register_vector_search_tool(mcp: FastMCP, graphql_client: GraphQLClient) -> 
             "className": GENAI_VECTOR_QUERY_CLASS,
         }
 
-        response = await graphql_client.execute_async(query=query, variables=variables)
+        response: Union[ToolError, Dict[str, Any]] = (
+            await graphql_client_execute_async_wrapper(
+                logger, method_name, graphql_client, query=query, variables=variables
+            )
+        )
+        if isinstance(response, ToolError):
+            return response
 
         try:
             chunks = response["data"]["createCmAbstractPersistable"]["properties"][0][
@@ -120,7 +135,7 @@ def register_vector_search_tool(mcp: FastMCP, graphql_client: GraphQLClient) -> 
         except Exception as e:
 
             return ToolError(
-                message=f"{vector_search_tool} failed: got err {e}",
+                message=f"{document_qa_global} failed: got err {e}",
             )
 
     def convert_guid(hex_string: str) -> str:
