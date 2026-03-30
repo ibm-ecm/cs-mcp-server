@@ -15,9 +15,9 @@
 import json
 import os
 import uuid
-from typing import Union, Dict, Any
+from typing import Optional, Union, Dict, Any
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 from cs_mcp_server.client.graphql_client import (
     GraphQLClient,
@@ -37,21 +37,34 @@ logger: Logger = logging.getLogger(__name__)
 
 # Environment variables for configuration
 MAX_CHUNKS = int(os.environ.get("MAX_CHUNKS", DEFAULT_MAX_CHUNKS))
+GENAI_LLM_MODEL_NAME = os.environ.get("GENAI_LLM_MODEL_NAME")
 RELEVANCE_SCORE = float(os.environ.get("RELEVANCE_SCORE", DEFAULT_RELEVANCE_SCORE))
 
 
 def register_vector_search_tool(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
     @mcp.tool(name="document_qa_global")
-    async def document_qa_global(prompt: str) -> Union[dict, ToolError]:
+    async def document_qa_global(
+        prompt: str,
+        return_chunks: Optional[bool] = False,
+        llm_model_name: Optional[str] = None,
+        number_of_chunks: Optional[int] = None,
+    ) -> Union[list, ToolError]:
         """
         Answers natural language questions by scanning the entire document repository. Use this for broad questions where the specific documents are not known or when looking for patterns across the entire document repository.
 
-        :returns: A dict of doc ids
+        :param prompt: The question to ask
+        :param return_chunks: Optional, Whether to return the chunks of the document that were used to answer the question
+        :param ll_model_name: Optional, if specify, use this llm model for query
+        returns: A list of doc ids or a list of doc chunks with id
         """
         method_name = "document_qa_global"
+        if llm_model_name is None:
+            llm_model_name = GENAI_LLM_MODEL_NAME
         max_chunks = MAX_CHUNKS
+        if number_of_chunks is not None:
+            max_chunks = number_of_chunks
         query = """
-            mutation createVectorQuery($repo:String!, $prompt:String!, $maxchunks:Int,
+            mutation createVectorQuery($repo:String!, $prompt:String!, $maxchunks:Int, $llmmodel:String,
             $className:String!){
             createCmAbstractPersistable(repositoryIdentifier: $repo,
             classIdentifier:$className,
@@ -61,6 +74,9 @@ def register_vector_search_tool(mcp: FastMCP, graphql_client: GraphQLClient) -> 
                 [
                 {
                 GenaiLLMPrompt: $prompt
+                },
+                {
+                GenaiLLMModelName: $llmmodel
                 },
                 {
                 GenaiPerformLLMQuery: false
@@ -75,7 +91,7 @@ def register_vector_search_tool(mcp: FastMCP, graphql_client: GraphQLClient) -> 
                 name
                 creator
                 properties(includes:[
-                "GenaiVectorChunks"
+                "GenaiVectorChunks", "GenaiLLMModelName"
                 
                 ])
                 {
@@ -89,6 +105,7 @@ def register_vector_search_tool(mcp: FastMCP, graphql_client: GraphQLClient) -> 
         variables = {
             "repo": graphql_client.object_store,
             "prompt": prompt,
+            "llmmodel": llm_model_name if llm_model_name is not None else None,
             "maxchunks": max_chunks,
             "className": GENAI_VECTOR_QUERY_CLASS,
         }
@@ -111,7 +128,8 @@ def register_vector_search_tool(mcp: FastMCP, graphql_client: GraphQLClient) -> 
             data = json.loads(chunks)
 
             docs_list = data.get("docs", [])  # Provide an empty list as a default
-            id_dict = {}
+            id_list = []
+            chunk_list: list[Any] = []
             if not docs_list:
                 pass  # TODO
             else:
@@ -121,21 +139,32 @@ def register_vector_search_tool(mcp: FastMCP, graphql_client: GraphQLClient) -> 
 
                     onedoc = item.get("doc", {})
                     doc_id = onedoc.get("metadata", {}).get("id")
-
+                    chunk = onedoc.get("page_content")
                     score = item.get("score")
                     if doc_id and score >= RELEVANCE_SCORE:
 
                         guid_doc_id = convert_guid(doc_id)
-                        if guid_doc_id not in id_dict.keys():
+                        if return_chunks is False:
                             doc_title = onedoc.get("metadata", {}).get("originaltitle")
-                            id_dict[guid_doc_id] = doc_title
+
+                            my_doc = {}
+                            my_doc[guid_doc_id] = doc_title
+                            id_list.append(my_doc)
+                            index = index + 1
+                        elif return_chunks is True:
+                            my_chunk = {}
+                            my_chunk[chunk] = doc_id
+                            chunk_list.append(my_chunk)
                             index = index + 1
 
-            return id_dict
+            if return_chunks is False:
+                return id_list
+            else:
+                return chunk_list
         except Exception as e:
 
             return ToolError(
-                message=f"{document_qa_global} failed: got err {e}",
+                message=f"{method_name} failed: got err {e}",
             )
 
     def convert_guid(hex_string: str) -> str:

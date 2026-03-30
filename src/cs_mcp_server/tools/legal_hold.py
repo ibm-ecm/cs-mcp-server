@@ -19,11 +19,14 @@ legal_hold.py module define all MCP tools that provide legal hold functionality.
 
 import logging
 import traceback
-from typing import  Any, Union, Dict
+from typing import Any, Union, Dict
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
-from cs_mcp_server.client.graphql_client import GraphQLClient, graphql_client_execute_async_wrapper
+from cs_mcp_server.client.graphql_client import (
+    GraphQLClient,
+    graphql_client_execute_async_wrapper,
+)
 from cs_mcp_server.utils import HoldRelationship, Hold, ToolError
 from cs_mcp_server.utils.constants import (
     CM_HOLD_CLASS,
@@ -35,7 +38,7 @@ from cs_mcp_server.utils.model.admin import HeldObject
 
 
 # Logger for this module
-logger = logging.getLogger(__name__) 
+logger = logging.getLogger(__name__)
 
 
 def register_hold_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
@@ -45,7 +48,7 @@ def register_hold_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
 
     async def _find_hold_relationship_object(
         hold_object_id: str, held_object_id: str
-    ) -> Union [ToolError, str, None]:
+    ) -> Union[ToolError, str, None]:
         """
         :returns: the id of the CmHoldRelationship object, or None if no relationship is found.
                  If an error occurs, returns a ToolError object.
@@ -83,17 +86,25 @@ def register_hold_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 "where_clause": condition_string,
             }
 
-            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=query, variables=var)
-            if isinstance   (response, ToolError):
+            response: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger, method_name, graphql_client, query=query, variables=var
+                )
+            )
+            if isinstance(response, ToolError):
                 return response
 
-
-            if "data" not in response or "repositoryObjects" not in response["data"] or "independentObjects" not in response["data"]["repositoryObjects"]:
+            if (
+                "data" not in response
+                or "repositoryObjects" not in response["data"]
+                or "independentObjects" not in response["data"]["repositoryObjects"]
+            ):
                 return None
 
             # return the id of the CmRelationshipObject
-            hold_relationships = response["data"]["repositoryObjects"]["independentObjects"]
+            hold_relationships = response["data"]["repositoryObjects"][
+                "independentObjects"
+            ]
             # walk thru each relationship object,
             for item in hold_relationships:
                 properties = item["properties"]
@@ -110,8 +121,6 @@ def register_hold_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
             return ToolError(
                 message=f"{method_name} failed: got err {ex}. Trace available in server logs.",
             )
-
-
 
     @mcp.tool(
         name="delete_object_from_hold",
@@ -141,13 +150,17 @@ def register_hold_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
         # look for an Object of CmHoldRelationship with the passed in Hold id and Held Id
         method_name = "delete_object_from_hold"
         try:
-            hold_relationship_id = await _find_hold_relationship_object(hold_id, held_id)
+            hold_relationship_id = await _find_hold_relationship_object(
+                hold_id, held_id
+            )
             if hold_relationship_id is None:
-                # Return a toolError 
+                # Return a toolError
                 return ToolError(
                     message=f"{method_name} no_action_needed: No hold relationship found between the specified hold and held object.",
                 )
-            if isinstance (hold_relationship_id, ToolError):  # if the function returned a ToolError
+            if isinstance(
+                hold_relationship_id, ToolError
+            ):  # if the function returned a ToolError
                 return hold_relationship_id
 
             mutation = """
@@ -185,9 +198,12 @@ def register_hold_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 "hold_relationship_id": hold_relationship_id,
             }
 
-            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=mutation, variables=var)
-            if isinstance   (response, ToolError):
+            response: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger, method_name, graphql_client, query=mutation, variables=var
+                )
+            )
+            if isinstance(response, ToolError):
                 return response
 
             # return the identifier of the Hold Relationship object just deleted
@@ -254,11 +270,14 @@ def register_hold_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 "hold_identifier": hold_object_id,
             }
 
-            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=mutation, variables=var)
-            if isinstance   (response, ToolError):
+            response: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger, method_name, graphql_client, query=mutation, variables=var
+                )
+            )
+            if isinstance(response, ToolError):
                 return response
-            
+
             # return the information for all the objects that this hold now has
             return response["data"]["changeObject"]["objectReference"]["identifier"]
         except Exception as ex:
@@ -274,7 +293,9 @@ def register_hold_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
     @mcp.tool(
         name="create_hold",
     )
-    async def create_hold(display_name: str, hold_class: str = CM_HOLD_CLASS) -> Union[Hold, ToolError]:
+    async def create_hold(
+        display_name: str, hold_class: str = CM_HOLD_CLASS
+    ) -> Union[Hold, ToolError]:
         """
         Create a hold with identifying information
 
@@ -289,7 +310,6 @@ def register_hold_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
         try:
             if not hold_class:
                 hold_class = CM_HOLD_CLASS
-
 
             mutation = """
                     mutation ($object_store_name: String!, $class_name: String!, $display_name: String!) {
@@ -323,9 +343,12 @@ def register_hold_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 "display_name": display_name,
             }
 
-            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=mutation, variables=var)
-            if isinstance   (response, ToolError):
+            response: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger, method_name, graphql_client, query=mutation, variables=var
+                )
+            )
+            if isinstance(response, ToolError):
                 return response
 
             return Hold.create_an_instance(response["data"]["changeObject"])
@@ -413,9 +436,12 @@ def register_hold_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 "held_identifier": held_id,
             }
 
-            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=mutation, variables=var)
-            if isinstance   (response, ToolError):
+            response: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger, method_name, graphql_client, query=mutation, variables=var
+                )
+            )
+            if isinstance(response, ToolError):
                 return response
 
             # return the information for the new/updated hold relationship
@@ -436,7 +462,7 @@ def register_hold_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
     )
     async def get_held_objects_for_hold(
         hold_object_id: str,
-    ) -> Union[list [HeldObject], ToolError]:
+    ) -> Union[list[HeldObject], ToolError]:
         """
         Given a hold object identified by its id, return all the objects that it held
 
@@ -518,26 +544,38 @@ query getHeldObjectsForAHold ($object_store_name: String!,
                 "identifier": hold_object_id,
             }
 
-            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=GET_HELD_OBJECTS_FOR_HOLD_QUERY, variables=var)
-            if isinstance   (response, ToolError):
+            response: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger,
+                    method_name,
+                    graphql_client,
+                    query=GET_HELD_OBJECTS_FOR_HOLD_QUERY,
+                    variables=var,
+                )
+            )
+            if isinstance(response, ToolError):
                 return response
 
             # extract the list of held objects from the graphQL response
-            graphQL_held_objects_list = None    # initialization of the list of graphQL held objects
+            graphQL_held_objects_list = (
+                None  # initialization of the list of graphQL held objects
+            )
             # for every CmHoldRelationships property in the hold, get the list of held objects
             for hold_property in response["data"]["object"]["properties"]:
                 if hold_property["id"] == "CmHoldRelationships":
-                    graphQL_held_objects_list = hold_property["independentObjectSetValue"]["independentObjects"]  
-
+                    graphQL_held_objects_list = hold_property[
+                        "independentObjectSetValue"
+                    ]["independentObjects"]
 
             # walk thru each list of graphQL held objects annd create a list of pydantic HeldObject objects
-            held_objects: list[HeldObject] = [] # initialize the list of pydantic HeldObject objects to be returned       
+            held_objects: list[HeldObject] = (
+                []
+            )  # initialize the list of pydantic HeldObject objects to be returned
             if graphQL_held_objects_list is not None:
                 for held_object in graphQL_held_objects_list:
                     a_held_object = HeldObject.create_an_instance(held_object)
                     held_objects.append(a_held_object)
- 
+
             return held_objects
 
         except Exception as ex:
@@ -555,7 +593,7 @@ query getHeldObjectsForAHold ($object_store_name: String!,
     )
     async def get_holds_by_name(hold_display_name: str) -> Union[list[Hold], ToolError]:
         """
-        Performs a case-insensitive substring search on the displayName field of CmHold objects, 
+        Performs a case-insensitive substring search on the displayName field of CmHold objects,
         returning all objects where the field contains the input hold_display_name string.
 
         :param hold_display_name: Search term for filtering holds by display name.
@@ -598,9 +636,12 @@ query getHeldObjectsForAHold ($object_store_name: String!,
                 "where_clause": condition_string,
             }
 
-            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=query, variables=var)
-            if isinstance   (response, ToolError):
+            response: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger, method_name, graphql_client, query=query, variables=var
+                )
+            )
+            if isinstance(response, ToolError):
                 return response
 
             # return holds with the display_name
@@ -609,7 +650,7 @@ query getHeldObjectsForAHold ($object_store_name: String!,
                 Hold.create_an_instance(hold)
                 for hold in response["data"]["repositoryObjects"]["independentObjects"]
             ]
-            return holds    
+            return holds
 
         except Exception as ex:
             error_traceback = traceback.format_exc(limit=TRACEBACK_LIMIT)
@@ -620,5 +661,3 @@ query getHeldObjectsForAHold ($object_store_name: String!,
             return ToolError(
                 message=f"{method_name} failed: got err {ex}. Trace available in server logs.",
             )
-
-

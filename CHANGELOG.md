@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-03-25
+
+### Added
+- **Vector Search Enhancements**
+  - Multi-document query support using content assistant (#133)
+  - Single document Q&A functionality for document-specific queries (#132)
+  - Configurable LLM model name for vector search queries (#136)
+  - Top N chunk retrieval capability (#135)
+  - Optional chunk return for multi-document queries (#136)
+
+- **Smart Search Features**
+  - Chunk return support for smart search when requested by caller (#134)
+
+### Changed
+- **Major Dependency Upgrade**
+  - Upgraded FastMCP from version 2.11.3 to 3.0.0
+  - Updated all imports from `mcp.server.fastmcp` to `fastmcp`
+
+- **Resource Updates**
+  - Enhanced resource specialized server functionality (#137)
+
+### Fixed
+- Fixed inline import issues in resource modules (#137)
+
+### Documentation
+- Updated README to include comprehensive resources documentation (#138)
+- Updated version references across documentation
+
 ## [1.0.3] - 2026-02-24
 
 ### Added
@@ -65,6 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Class and annotation management
 - SSL/TLS support with configurable verification
 
+[1.0.4]: https://github.com/ibm-ecm/ibm-content-services-mcp-server/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/ibm-ecm/ibm-content-services-mcp-server/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/ibm-ecm/ibm-content-services-mcp-server/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/ibm-ecm/ibm-content-services-mcp-server/compare/v1.0.0...v1.0.1

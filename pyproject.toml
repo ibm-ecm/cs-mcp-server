@@ -1,6 +1,6 @@
 [project]
 name = "cs-mcp-server"
-version = "1.0.3"
+version = "1.0.4"
 description = "Content Services MCP Server for FileNet Content Management"
 readme = "README.md"
 authors = [
@@ -16,7 +16,7 @@ requires-python = ">=3.13"
 dependencies = [
     "httpx>=0.28.1",
     "mcp[cli]>=1.15.0",
-    "fastmcp>=2.11.3",
+    "fastmcp>=3.0.0",
     "aiohttp>=3.8.0",
     "pydantic>=2.0.0",
     "requests>=2.31.0",

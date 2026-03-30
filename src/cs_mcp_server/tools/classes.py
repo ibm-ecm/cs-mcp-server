@@ -15,7 +15,7 @@
 from functools import lru_cache
 from typing import List, Union
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
 from cs_mcp_server.cache.metadata import MetadataCache

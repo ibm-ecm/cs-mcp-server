@@ -17,7 +17,7 @@ from logging import Logger
 
 import logging
 from typing import Any, List, Union, Optional, Dict
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from cs_mcp_server.cache.metadata import MetadataCache
 from cs_mcp_server.cache.metadata_loader import (
     get_class_metadata_tool,
@@ -27,7 +27,10 @@ from cs_mcp_server.utils.common import (
     ToolError,
     CachePropertyDescription,
 )
-from cs_mcp_server.client.graphql_client import GraphQLClient, graphql_client_execute_async_wrapper
+from cs_mcp_server.client.graphql_client import (
+    GraphQLClient,
+    graphql_client_execute_async_wrapper,
+)
 from cs_mcp_server.utils.model.core import DocumentMatch, DocumentFilingMatch
 from cs_mcp_server.utils.scoring import tokenize, word_similarity
 from cs_mcp_server.utils.utils import process_search_parameters
@@ -220,7 +223,7 @@ def register_search_tools(
     @mcp.tool(
         name="repository_object_search",
     )
-    async def repository_object_search (
+    async def repository_object_search(
         search_parameters: SearchParameters,
     ) -> dict | ToolError:
         """
@@ -240,8 +243,9 @@ def register_search_tools(
                     - label (str): The name of the property.
                     - value (str): The value of the property.
         """
-        return await get_repository_object_main   (search_parameters, graphql_client, metadata_cache)
-
+        return await get_repository_object_main(
+            search_parameters, graphql_client, metadata_cache
+        )
 
     @mcp.tool(
         name="lookup_documents_by_name",
@@ -337,11 +341,14 @@ def register_search_tools(
 
         docs: list[dict]
         try:
-            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=query_text, variables=var)
-            if isinstance   (response, ToolError):
+            response: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger, method_name, graphql_client, query=query_text, variables=var
+                )
+            )
+            if isinstance(response, ToolError):
                 return response
-                
+
             docs = response["data"]["documents"]["documents"]
         except Exception as e:
             return ToolError(
@@ -491,11 +498,18 @@ def register_search_tools(
 
             intermediate_folds: list[dict]
             try:
-                interresponse: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-	                logger, method_name, graphql_client, query=intermediate_query_text, variables=intermediate_var)
-                if isinstance   (interresponse, ToolError):
+                interresponse: Union[ToolError, Dict[str, Any]] = (
+                    await graphql_client_execute_async_wrapper(
+                        logger,
+                        method_name,
+                        graphql_client,
+                        query=intermediate_query_text,
+                        variables=intermediate_var,
+                    )
+                )
+                if isinstance(interresponse, ToolError):
                     return interresponse
-                
+
                 intermediate_folds = interresponse["data"]["folders"]["folders"]
             except Exception as e:
                 return ToolError(
@@ -615,11 +629,18 @@ def register_search_tools(
 
         filings: list[dict]
         try:
-            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=document_filings_query_text, variables=filings_var)
-            if isinstance   (response, ToolError):
+            response: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger,
+                    method_name,
+                    graphql_client,
+                    query=document_filings_query_text,
+                    variables=filings_var,
+                )
+            )
+            if isinstance(response, ToolError):
                 return response
-	                
+
             filings = response["data"]["repositoryObjects"]["independentObjects"]
         except Exception as e:
             return ToolError(
@@ -697,12 +718,12 @@ def register_search_tools(
         )
 
 
-async def get_repository_object_main (
+async def get_repository_object_main(
     search_parameters: SearchParameters,
     graphql_client: GraphQLClient,
     metadata_cache: MetadataCache,
     additional_filter_string: str = "",
-) -> dict | ToolError:    
+) -> dict | ToolError:
     # Process search parameters using the utility function
     result = await process_search_parameters(
         graphql_client, metadata_cache, search_parameters
@@ -714,8 +735,12 @@ async def get_repository_object_main (
 
     # Unpack the result tuple
     search_properties_string, return_properties = result
-    if (additional_filter_string):
-        search_properties_string = f"{search_properties_string} and {additional_filter_string}" if search_properties_string else additional_filter_string
+    if additional_filter_string:
+        search_properties_string = (
+            f"{search_properties_string} and {additional_filter_string}"
+            if search_properties_string
+            else additional_filter_string
+        )
 
     query = """
     query repositoryObjectsSearch($object_store_name: String!,

@@ -153,9 +153,9 @@ The Legal Hold Server provides 6 tools for legal compliance management:
 
 - **get_holds_by_name**: Searches for legal holds by their display name.
 
-### AI Document Insight Server Tools (Preview)
+### AI Document Insight Server Tools 
 
-The AI Document Insight Server provides 4 specialized tools that leverage virtual table capabilities for Content Assistant operations:
+The AI Document Insight Server provides 6 specialized tools that leverage virtual table capabilities for Content Assistant operations:
 
 - **document_smart_search**: Performs a hybrid search combining vector (semantic) search and metadata filtering to find documents. Use this to find relevant documents based on meaning rather than just keywords. Returns only released versions of documents ranked by a GenaiScore.
 
@@ -165,30 +165,69 @@ The AI Document Insight Server provides 4 specialized tools that leverage virtua
 
 - **document_qa_global**: Answers natural language questions by scanning the entire document repository. Use this for broad questions where the specific documents are not known or when looking for patterns across the entire document repository.
 
+- **document_qa_specific**: Answers natural language questions based strictly on the context of specific, selected document. Use this when the user asks about a specific file.
+
+- **documents_qa_multiple**: Answers natural language questions based strictly on the context of selected documents. Use this when the user asks about a set of files.
+
 ---
 
-## Resources (Core Server Only)
+## Resources
 
 ### What are Resources?
 
-Resources provide read-only access to document content for LLM context. Documents in a configured folder are automatically exposed as MCP resources, allowing AI models to reference them during conversations without explicit tool calls.
+Resources provide read-only access to document content for LLM context. Documents in configured folders are automatically exposed as MCP resources, allowing AI models to reference them during conversations without explicit tool calls.
 
 > **Important:** Resources functionality requires the **Persistent Text Extract Add-on** to be installed in your object store to retrieve document content. See the [Prerequisites](#prerequisites) section for installation details.
 
+### Server-Specific Resource Support
+
+Each server type supports resources with specific folder defaults and optional prefix validation:
+
+| Server Type | Default Folder | Prefix Requirement | Description |
+|-------------|----------------|-------------------|-------------|
+| **Core** | `/resources` | None | Accepts all documents without prefix validation |
+| **AI Document Insight** | `/resources/AIDocumentInsight` | `DI_` | Only loads documents starting with `DI_` |
+| **Legal Hold** | `/resources/LegalHold` | `LH_` | Only loads documents starting with `LH_` |
+| **Property Extraction & Classification** | `/resources/Classification` | `CL_`, `PE_` | Only loads documents starting with `CL_` or `PE_` |
+
 ### Configuration
 
-Set the `RESOURCES_FOLDER` environment variable to specify the folder path in your object store where resource documents should be uploaded:
+#### RESOURCES_FOLDER
+
+Override the default resource folder path for any server:
 
 ```bash
-RESOURCES_FOLDER=/resources  # Default value - this is the folder path in the object store
+RESOURCES_FOLDER=/custom/path  # Override default folder path
 ```
 
 The `RESOURCES_FOLDER` value is the path of the folder in your FileNet object store where you should upload your resource documents. The server will automatically discover and register all documents in this folder.
 
-Documents in this folder will be:
-- Automatically registered as resources when the Core server starts
+Documents in the configured folder will be:
+- Automatically registered as resources when the server starts
 - Available to the LLM with URIs following the pattern: `ibm-cs://{object_store}/documents/{folder_path}/{document_name}`
 - Displayed with names in the format: `[IBM CS] {document_name}`
+
+#### RESOURCES_PREFIX_VALIDATION
+
+Control how the server validates document name prefixes:
+
+```bash
+RESOURCES_PREFIX_VALIDATION=warn  # Default: warn
+```
+
+**Validation Modes:**
+
+- **`strict`**: Documents without matching prefixes are skipped and logged as errors. Recommended for production to ensure clean separation between server types.
+- **`warn`** (Default): Documents without matching prefixes are skipped with warnings logged. Good for development and testing.
+- **`off`**: No prefix validation performed. All documents in the folder are loaded regardless of naming.
+
+**Example for Legal Hold Server:**
+```bash
+# Uses default folder: /resources/LegalHold
+# Only accepts documents starting with LH_
+# Strict validation - logs errors for invalid documents
+RESOURCES_PREFIX_VALIDATION=strict
+```
 
 ### Security Guidelines
 
@@ -208,9 +247,25 @@ Resources are ideal for providing AI models with reference documentation:
 
 ### Example
 
-If you set `RESOURCES_FOLDER=/policies` and have documents in that folder:
-- `/policies/data_classification_policy.txt`
-- `/policies/retention_policy.txt`
+**For Core Server (default folder: `/resources`, no prefix required):**
+
+Documents in that folder:
+- `/resources/data_classification_policy.txt`
+- `/resources/retention_policy.txt`
+
+**For Property Extraction & Classification Server (default folder: `/resources/Classification`, requires `CL_` or `PE_` prefix):**
+
+Documents with proper prefixes:
+- `/resources/Classification/CL_data_classification_policy.txt`
+- `/resources/Classification/CL_retention_policy.txt`
+
+Or to load files without prefix validation:
+```bash
+RESOURCES_PREFIX_VALIDATION=off
+```
+Documents without prefixes:
+- `/resources/Classification/data_classification_policy.txt`
+- `/resources/Classification/retention_policy.txt`
 
 These documents will be available as resources that the AI can reference when answering questions or making decisions.
 
@@ -309,7 +364,8 @@ The Content Services MCP Servers require several environment variables to connec
 | `POOL_CONNECTIONS` | Number of connection pool connections | `100` |
 | `POOL_MAXSIZE` | Maximum pool size | `100` |
 | `LOG_LEVEL` | Logging level for the server. Valid values: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` | `INFO` |
-| `RESOURCES_FOLDER` | **Core Server only.** Folder path in the repository containing documents to expose as MCP resources. Documents in this folder will be automatically registered as resources with URIs following the pattern `ibm-cs://{object_store}/documents/{folder_path}/{document_name}`. Resource names will be displayed as `[IBM CS] {document_name}` in MCP clients. Requires Persistent Text Extract Add-on. | `/resources` |
+| `RESOURCES_FOLDER` | Folder path in the repository containing documents to expose as MCP resources. Each server type has a default folder (see [Resources](#resources) section). Documents will be automatically registered as resources with URIs following the pattern `ibm-cs://{object_store}/documents/{folder_path}/{document_name}`. Resource names will be displayed as `[IBM CS] {document_name}` in MCP clients. Requires Persistent Text Extract Add-on. | Server-specific (see [Resources](#resources)) |
+| `RESOURCES_PREFIX_VALIDATION` | Controls prefix validation for resource documents. Valid values: `strict` (skip invalid documents, log errors), `warn` (skip invalid documents, log warnings), `off` (no validation). See [Resources](#resources) section for server-specific prefix requirements. | `warn` |
 
 #### Cloud Pak for Business Automation Environment Variables
 
@@ -620,6 +676,14 @@ For creating connections using the ADK CLI, please refer to the [official docume
     ```
     uvx --from git+https://github.com/ibm-ecm/ibm-content-services-mcp-server ai-document-insight-cs-mcp-server
     ```
+  
+  **Note:** If you encounter issues with git-based installation (e.g., "Git executable not found"), you can use this alternative command that downloads directly from GitHub without requiring git:
+  ```
+  uvx --from https://github.com/ibm-ecm/ibm-content-services-mcp-server/archive/refs/heads/main.zip core-cs-mcp-server
+  ```
+  Replace `core-cs-mcp-server` with the name of the server you want to install (`property-extraction-and-classification-cs-mcp-server`, `legal-hold-cs-mcp-server`, or `ai-document-insight-cs-mcp-server`).
+  
+
 
 - Click **Connect**
 - If you see "Connection successful", click **Done**
@@ -715,6 +779,7 @@ The Content Services MCP Servers can be integrated with AI Agents that support t
 2. Generate document summaries using GenAI
 3. Compare documents and analyze differences
 4. Answer natural language questions across the entire document repository
+5. Answer natural language questions based on one document or a set of documents
 
 ### Example Workflows
 

@@ -17,7 +17,7 @@ import traceback
 import re
 from typing import Any, List, Optional, Union, Dict
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from cs_mcp_server.cache.metadata import MetadataCache

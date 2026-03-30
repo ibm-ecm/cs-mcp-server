@@ -16,7 +16,7 @@ import logging
 import traceback
 from typing import Any, Union
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 from cs_mcp_server.cache.metadata import MetadataCache
 from cs_mcp_server.client.graphql_client import GraphQLClient

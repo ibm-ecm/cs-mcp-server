@@ -16,9 +16,12 @@ import logging
 import traceback
 from typing import Union, Dict, Any
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
-from cs_mcp_server.client.graphql_client import GraphQLClient, graphql_client_execute_async_wrapper
+from cs_mcp_server.client.graphql_client import (
+    GraphQLClient,
+    graphql_client_execute_async_wrapper,
+)
 from cs_mcp_server.utils.constants import TRACEBACK_LIMIT
 from cs_mcp_server.utils import ToolError, Annotation
 
@@ -104,9 +107,16 @@ def register_annotation_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> No
         }
 
         try:
-            result: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=ANNOTATIONS_QUERY, variables=variables)
-            if isinstance   (result, ToolError):
+            result: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger,
+                    method_name,
+                    graphql_client,
+                    query=ANNOTATIONS_QUERY,
+                    variables=variables,
+                )
+            )
+            if isinstance(result, ToolError):
                 return result
 
             # Check for no result returned before checking if there is "errors" key in the result dictionary
@@ -164,7 +174,6 @@ def register_annotation_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> No
                 ],
             )
 
-
     @mcp.tool(
         name="get_annotation",
     )
@@ -175,7 +184,7 @@ def register_annotation_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> No
         Retrieves an annotation associated with an annotation id.
 
         This tool fetches annotation metadata including creator, dates, descriptive text,
-        and content element information. 
+        and content element information.
 
         :param annotation_id: The annotation ID to retrieve information for.
 
@@ -272,11 +281,9 @@ def register_annotation_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> No
                     ],
                 )
 
-
- 
             a_annotation = Annotation.create_an_instance(
-            graphQL_changed_object_dict=result["data"]["annotation"],
-                        class_name=result["data"]["annotation"]["className"],
+                graphQL_changed_object_dict=result["data"]["annotation"],
+                class_name=result["data"]["annotation"]["className"],
             )
 
             return a_annotation

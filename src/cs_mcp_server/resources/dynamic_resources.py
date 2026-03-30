@@ -21,16 +21,60 @@ and can be refreshed via a tool.
 """
 
 import logging
-from typing import Any, Dict, List
+import os
+from enum import Enum
+from typing import Any, Dict, List, Optional
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from mcp.types import Annotations
 
 from cs_mcp_server.client.graphql_client import GraphQLClient
 from cs_mcp_server.resources.documents import _fetch_text_extract_by_identifier
+from cs_mcp_server.utils.constants import (
+    RESOURCE_PREFIX_CORE,
+    RESOURCE_PREFIX_AI_DOCUMENT_INSIGHT,
+    RESOURCE_PREFIX_LEGAL_HOLD,
+    RESOURCE_PREFIX_PROPERTY_EXTRACTION_CLASSIFICATION,
+    RESOURCE_PREFIX_FULL,
+    DEFAULT_RESOURCE_FOLDER_CORE,
+    DEFAULT_RESOURCE_FOLDER_AI_DOCUMENT_INSIGHT,
+    DEFAULT_RESOURCE_FOLDER_LEGAL_HOLD,
+    DEFAULT_RESOURCE_FOLDER_PROPERTY_EXTRACTION_CLASSIFICATION,
+    DEFAULT_RESOURCE_FOLDER_FULL,
+    RESOURCE_VALIDATION_STRICT,
+    RESOURCE_VALIDATION_WARN,
+    RESOURCE_VALIDATION_OFF,
+)
 
 # Logger for this module
 logger = logging.getLogger(__name__)
+
+
+class ValidationMode(str, Enum):
+    """Enumeration of resource prefix validation modes."""
+
+    STRICT = RESOURCE_VALIDATION_STRICT
+    WARN = RESOURCE_VALIDATION_WARN
+    OFF = RESOURCE_VALIDATION_OFF
+
+
+# Mapping of server types to their required prefixes
+REQUIRED_PREFIXES = {
+    "core": RESOURCE_PREFIX_CORE,
+    "ai-document-insight": RESOURCE_PREFIX_AI_DOCUMENT_INSIGHT,
+    "legal-hold": RESOURCE_PREFIX_LEGAL_HOLD,
+    "property-extraction-and-classification": RESOURCE_PREFIX_PROPERTY_EXTRACTION_CLASSIFICATION,
+    "full": RESOURCE_PREFIX_FULL,
+}
+
+# Mapping of server types to their default resource folders
+DEFAULT_RESOURCE_FOLDERS = {
+    "core": DEFAULT_RESOURCE_FOLDER_CORE,
+    "ai-document-insight": DEFAULT_RESOURCE_FOLDER_AI_DOCUMENT_INSIGHT,
+    "legal-hold": DEFAULT_RESOURCE_FOLDER_LEGAL_HOLD,
+    "property-extraction-and-classification": DEFAULT_RESOURCE_FOLDER_PROPERTY_EXTRACTION_CLASSIFICATION,
+    "full": DEFAULT_RESOURCE_FOLDER_FULL,
+}
 
 
 def _list_dynamic_resources_folder_sync(
@@ -150,13 +194,72 @@ async def _list_dynamic_resources_folder(
         return []
 
 
+def _validate_resource_prefix(
+    doc_name: str, server_type: str, validation_mode: str = RESOURCE_VALIDATION_WARN
+) -> bool:
+    """
+    Validate that a document name matches the required prefix for the server type.
+
+    Args:
+        doc_name: The document name to validate
+        server_type: The server type (e.g., "core", "legal-hold")
+        validation_mode: Validation mode ("strict", "warn", or "off")
+
+    Returns:
+        bool: True if validation passes or should be skipped, False otherwise
+    """
+    if validation_mode == RESOURCE_VALIDATION_OFF:
+        return True
+
+    required_prefixes = REQUIRED_PREFIXES.get(server_type)
+
+    # If no prefix requirement (None), accept all files
+    if required_prefixes is None:
+        return True
+
+    # Check if document name starts with any of the required prefixes
+    has_valid_prefix = any(doc_name.startswith(prefix) for prefix in required_prefixes)
+
+    if not has_valid_prefix:
+        if validation_mode == RESOURCE_VALIDATION_STRICT:
+            logger.error(
+                "STRICT: Document '%s' does not match required prefix %s for %s server",
+                doc_name,
+                required_prefixes,
+                server_type,
+            )
+            return False
+        elif validation_mode == RESOURCE_VALIDATION_WARN:
+            logger.warning(
+                "Skipping '%s': does not match required prefix %s for %s server",
+                doc_name,
+                required_prefixes,
+                server_type,
+            )
+            return False
+
+    return True
+
+
 def _register_resources_from_documents(
     mcp: FastMCP,
     graphql_client: GraphQLClient,
     folder_path: str,
     documents: List[Dict[str, str]],
+    server_type: str,
+    validation_mode: str = RESOURCE_VALIDATION_WARN,
 ) -> None:
-    """Helper function to register resources from a list of documents."""
+    """
+    Helper function to register resources from a list of documents.
+
+    Args:
+        mcp: The FastMCP server instance
+        graphql_client: The GraphQL client
+        folder_path: The folder path containing the documents
+        documents: List of document dictionaries with 'name' and 'id'
+        server_type: The server type for prefix validation
+        validation_mode: Validation mode ("strict", "warn", or "off")
+    """
     # Common file extensions to remove from resource names
     extensions = [
         ".txt",
@@ -174,6 +277,10 @@ def _register_resources_from_documents(
     for doc in documents:
         doc_name = doc["name"]
         doc_id = doc["id"]
+
+        # Validate prefix before processing
+        if not _validate_resource_prefix(doc_name, server_type, validation_mode):
+            continue
 
         # Clean document name for URI
         resource_name = doc_name.lower()
@@ -218,13 +325,28 @@ def _register_resources_from_documents(
 
 
 def register_dynamic_resources(
-    mcp: FastMCP, graphql_client: GraphQLClient, folder_path: str
+    mcp: FastMCP, graphql_client: GraphQLClient, folder_path: str, server_type: str
 ) -> None:
-    """Register dynamic resources from the specified folder."""
+    """
+    Register dynamic resources from the specified folder.
+
+    Args:
+        mcp: The FastMCP server instance
+        graphql_client: The GraphQL client
+        folder_path: The folder path containing resource documents
+        server_type: The server type for prefix validation
+    """
+    # Get validation mode from environment variable
+    validation_mode = os.environ.get(
+        "RESOURCES_PREFIX_VALIDATION", RESOURCE_VALIDATION_WARN
+    ).lower()
+
     documents = _list_dynamic_resources_folder_sync(graphql_client, folder_path)
 
     if documents:
-        _register_resources_from_documents(mcp, graphql_client, folder_path, documents)
+        _register_resources_from_documents(
+            mcp, graphql_client, folder_path, documents, server_type, validation_mode
+        )
 
     # Refresh tool disabled - many MCP clients do not support dynamic resource updates
     # To refresh resources, restart the server
@@ -238,4 +360,6 @@ def register_dynamic_resources(
     #     """
     #     documents = await _list_dynamic_resources_folder(graphql_client, folder_path)
     #     if documents:
-    #         _register_resources_from_documents(mcp, graphql_client, folder_path, documents)
+    #         _register_resources_from_documents(
+    #             mcp, graphql_client, folder_path, documents, server_type, validation_mode
+    #         )
