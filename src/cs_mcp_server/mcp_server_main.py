@@ -27,7 +27,7 @@ import os
 from enum import Enum
 
 # Third-party imports
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 # Use absolute imports
 from cs_mcp_server.cache import MetadataCache
@@ -43,7 +43,10 @@ from cs_mcp_server.tools.folders import register_folder_tools
 from cs_mcp_server.tools.annotations import register_annotation_tools
 from cs_mcp_server.tools.property_extraction import register_property_extraction_tools
 from cs_mcp_server.tools.classification import register_classification_tools
-from cs_mcp_server.resources.dynamic_resources import register_dynamic_resources
+from cs_mcp_server.resources.dynamic_resources import (
+    register_dynamic_resources,
+    DEFAULT_RESOURCE_FOLDERS,
+)
 from cs_mcp_server.tools.custom_objects import register_custom_object_tools
 from cs_mcp_server.tools.advanced_search import register_advanced_search_tools
 
@@ -214,7 +217,6 @@ def register_server_resources(
 
     Args:
         graphql_client: The initialized GraphQL client
-        metadata_cache: The metadata cache instance
         server_type: The type of server (ServerType enum)
     """
     # Ensure mcp is initialized (type narrowing for type checker)
@@ -223,14 +225,26 @@ def register_server_resources(
     logger.info("Registering resources for %s server", server_type.value)
 
     # Register resources based on server type
-    # Resources are registered for CORE and FULL server types
-    if server_type in (ServerType.CORE, ServerType.FULL):
-        # Get dynamic resources folder path from environment
-        dynamic_resources_folder = os.environ.get("RESOURCES_FOLDER", "/resources")
+    # Resources are now registered for CORE, AI_DOCUMENT_INSIGHT, LEGAL_HOLD,
+    # PROPERTY_EXTRACTION_AND_CLASSIFICATION, and FULL server types
+    if server_type in (
+        ServerType.CORE,
+        ServerType.AI__DOCUMENT_INSIGHT,
+        ServerType.LEGAL_HOLD,
+        ServerType.PROPERTY_EXTRACTION_AND_CLASSIFICATION,
+        ServerType.FULL,
+    ):
+        # Get default folder for this server type
+        default_folder = DEFAULT_RESOURCE_FOLDERS.get(server_type.value, "/resources")
 
-        register_dynamic_resources(mcp, graphql_client, dynamic_resources_folder)
+        # Get dynamic resources folder path from environment, with server-specific default
+        dynamic_resources_folder = os.environ.get("RESOURCES_FOLDER", default_folder)
 
-        logger.info("Resources registered")
+        register_dynamic_resources(
+            mcp, graphql_client, dynamic_resources_folder, server_type.value
+        )
+
+        logger.info("Resources registered from %s", dynamic_resources_folder)
 
 
 def register_server_tools(

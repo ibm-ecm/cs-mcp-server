@@ -15,9 +15,9 @@
 
 import logging
 
-from typing import Any, Union, Dict
+from typing import Any, Optional, Union, Dict
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 from cs_mcp_server.cache.metadata import MetadataCache
 from cs_mcp_server.cache.metadata_loader import get_class_metadata_tool
@@ -47,6 +47,8 @@ def register_advanced_search_tools(
     async def document_smart_search(
         vector_prompt: str,
         search_parameters: SearchParameters,
+        return_chunks: Optional[bool] = False,
+        number_of_chunks: Optional[int] = 8,
     ) -> list | ToolError:
         """
         **PREREQUISITES IN ORDER**: To use this tool, you MUST call two other tools first in a specific sequence.
@@ -60,7 +62,8 @@ def register_advanced_search_tools(
         :param search_parameters (SearchParameters): provide parameters search_class and the search conditions.
           Note the search_class is filled in by determine_class tool.
           search_properties inside search_parameters include any property being searched for and any search conditions.
-
+        :param return_chunks: Optional, Whether to return the chunks of the document that were used to answer the question
+        :param number_of_chunks: Optional, The number of chunks to return if return_chunks is True.
 
         :returns: the repository object details, including:
             - GenaiScore and each corresponding document (list): a list of dictionary which containing GenaiScore and corresponding document:
@@ -71,20 +74,7 @@ def register_advanced_search_tools(
                     - properties (list): A list of properties, each containing:
                         - label (str): The name of the property.
                         - value (str): The value of the property.
-
-        Example: find docs with content related to 2023 budget and created by John Doe, the input would be:
-        vevtor__prompt: "2023 budget"
-        search_parameters:
-        {
-            "search_class":"Document",
-            "search_properties": [
-                {
-                "property_name": "Creator",
-                "property_value": "John Doe",
-                "operator": "CONTAINS"
-                }
-            ]
-            }
+                - Related chunks if requested.
         """
         # First, get the search condition and return properties
 
@@ -105,6 +95,8 @@ def register_advanced_search_tools(
         search_properties_string, return_properties = result
         if vector_prompt:
             return_properties.append("GenaiScore")
+            if return_chunks:
+                return_properties.append("GenaiVectorChunks")
         return_properties_with_brackets = [f"[{prop}]" for prop in return_properties]
 
         logger.info("search property string:" + (search_properties_string or ""))
@@ -168,26 +160,41 @@ def register_advanced_search_tools(
                 return []
             else:
                 contained_docs = []
+                index = 0
                 for doc in docslist:
                     properties = doc["properties"]
                     id_value = None
                     score = None
+                    chunks = None
                     for prop in properties:
                         if prop["id"] == "Id":
                             id_value = prop["value"]
                             logger.info("doc id is:" + id_value)
                         if prop["id"] == "GenaiScore":
                             score = prop["value"]
+                        if prop["id"] == "GenaiVectorChunks":
+                            chunks = prop["value"]
 
                     doc_with_id = {"id": id_value}
                     doc_with_id |= doc
                     onedoc = Document.create_an_instance(
                         graphQL_changed_object_dict=doc_with_id,
                     )
-                    onedoc_withscore = {
-                        "GenaiScore": score,
-                        "document": onedoc,
-                    }
+                    onedoc_withscore = {}
+                    if return_chunks:
+                        onedoc_withscore = {
+                            "GenaiScore": score,
+                            "document": onedoc,
+                            "chunks": chunks,
+                        }
+                        index += 1
+                        if index == number_of_chunks:
+                            break
+                    else:
+                        onedoc_withscore = {
+                            "GenaiScore": score,
+                            "document": onedoc,
+                        }
                     contained_docs.append(onedoc_withscore)
                 return contained_docs
 
@@ -325,3 +332,154 @@ def register_advanced_search_tools(
         if isinstance(results, ToolError):
             return results
         return results["data"]["createCmAbstractPersistable"]["properties"][0]["value"]
+
+    @mcp.tool(name="document_qa_specific")
+    async def document_qa_specific(
+        document_id: str, prompt: str, return_chunks: Optional[bool] = False
+    ) -> Union[dict, ToolError]:
+        """
+        Description:
+        Answers natural language questions based strictly on the context of specific, selected document. Use this when the user asks about a specific file.
+
+
+        :param document_id: The id of the document for the context.
+        :param prompt: The prompt for the question.
+
+        :returns: ToolError or the answer and optionally the doc chunks.
+        """
+        method_name = "document_qa_specific"
+
+        query = """
+                   mutation createDocumentQuery($repo:String!, $props:[PropertyIdentifierAndScalarValue!],
+                    $className:String!){
+                    createCmAbstractPersistable(repositoryIdentifier: $repo, 
+                    classIdentifier:$className,
+                    cmAbstractPersistableProperties:
+                    {
+                        properties:$props
+                    })
+                    {
+                        id
+                        properties(includes:[
+                        
+                        "GenaiLLMResponse", "GenaiVectorChunks"
+                        
+                        ])
+                        {
+                        alias
+                        value
+                        }
+                    }
+                    }
+                    """
+
+        props = [
+            {"GenaiLLMPrompt": prompt},
+            {"GenaiPerformLLMQuery": True},
+            {
+                "GenaiContextDocument": {
+                    "identifier": document_id,
+                    "classIdentifier": "{01A3A8C2-7AEC-11D1-A31B-0020AF9FBB1C}",
+                }
+            },
+        ]
+
+        var = {
+            "repo": graphql_client.object_store,
+            "props": props,
+            "className": "GenaiDocumentQuery",
+        }
+
+        logger.info(f"Executing var: {var}")
+
+        results: Union[ToolError, Dict[str, Any]] = (
+            await graphql_client_execute_async_wrapper(
+                logger, method_name, graphql_client, query=query, variables=var
+            )
+        )
+        if isinstance(results, ToolError):
+            return results
+        answer = results["data"]["createCmAbstractPersistable"]["properties"][0][
+            "value"
+        ]
+        chunks = results["data"]["createCmAbstractPersistable"]["properties"][1][
+            "value"
+        ]
+        if return_chunks:
+            return {"answer": answer, "chunks": chunks}
+        else:
+            return {"answer": answer}
+
+    @mcp.tool(name="documents_qa_specific")
+    async def documents_qa_specific(
+        document_ids: list[str], prompt: str, return_chunks: Optional[bool] = False
+    ) -> Union[dict, ToolError]:
+        """
+        Description:
+        Answers natural language questions based strictly on the context of selected documents. Use this when the user asks about a set of files.
+
+
+        :param document_ids: The ids of the documents for the context.
+        :param prompt: The prompt for the question.
+        :param return_chunks: Optional. Whether to return the chunks of the documents.
+
+        :returns: ToolError or the answer and optionally the doc chunks.
+        """
+        method_name = "documents_qa_specific"
+
+        query = """
+                   mutation createMultiDocumentsQuery($repo:String!, $props:[PropertyIdentifierAndScalarValue!],
+                        $className:String!){
+                        createCmAbstractPersistable(repositoryIdentifier: $repo, 
+                        classIdentifier:$className,
+                        cmAbstractPersistableProperties:
+                        {
+                            properties:$props
+                        })
+                        {
+                            id
+                            name
+                            creator
+                            properties(includes:[
+                            "GenaiLLMResponse", "GenaiVectorChunks",
+                            
+                            ])
+                            {
+                            alias
+                            value
+                            }
+                        }
+                        }
+                    """
+
+        props = [
+            {"GenaiLLMPrompt": prompt},
+            {"GenaiPerformLLMQuery": True},
+            {"GenaiContextDocuments": document_ids},
+        ]
+
+        var = {
+            "repo": graphql_client.object_store,
+            "props": props,
+            "className": "GenaiMultiDocumentQuery",
+        }
+
+        logger.info(f"Executing var: {var}")
+
+        results: Union[ToolError, Dict[str, Any]] = (
+            await graphql_client_execute_async_wrapper(
+                logger, method_name, graphql_client, query=query, variables=var
+            )
+        )
+        if isinstance(results, ToolError):
+            return results
+        answer = results["data"]["createCmAbstractPersistable"]["properties"][0][
+            "value"
+        ]
+        chunks = results["data"]["createCmAbstractPersistable"]["properties"][1][
+            "value"
+        ]
+        if return_chunks:
+            return {"answer": answer, "chunks": chunks}
+        else:
+            return {"answer": answer}

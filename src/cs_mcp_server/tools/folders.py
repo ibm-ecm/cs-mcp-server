@@ -19,9 +19,12 @@ import traceback
 import uuid
 from typing import Optional, Union, Dict, Any
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
-from cs_mcp_server.client.graphql_client import GraphQLClient, graphql_client_execute_async_wrapper
+from cs_mcp_server.client.graphql_client import (
+    GraphQLClient,
+    graphql_client_execute_async_wrapper,
+)
 from cs_mcp_server.utils import ToolError
 from cs_mcp_server.utils.model.core import NULL_VALUE, Document, Folder
 from cs_mcp_server.utils.model.coreInput import FolderPropertiesInput
@@ -311,9 +314,12 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                     }
             """
             var = {"repo": graphql_client.object_store, "id": return_id}
-            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=mutation, variables=var)
-            if isinstance   (response, ToolError):
+            response: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger, method_name, graphql_client, query=mutation, variables=var
+                )
+            )
+            if isinstance(response, ToolError):
                 return response
 
             return response["data"]["deleteReferentialContainmentRelationship"]["id"]
@@ -365,9 +371,12 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 "folderIdentifier": folder_id_or_path,
             }
 
-            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=mutation, variables=var)
-            if isinstance   (response, ToolError):
+            response: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger, method_name, graphql_client, query=mutation, variables=var
+                )
+            )
+            if isinstance(response, ToolError):
                 return response
 
             return response["data"]["fileDocument"]["id"]
@@ -534,10 +543,17 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
 
             # Execute the GraphQL mutation
             logger.info("Executing folder update")
-            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=mutation, variables=variables)
+            response: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger,
+                    method_name,
+                    graphql_client,
+                    query=mutation,
+                    variables=variables,
+                )
+            )
             # handling exception
-            if isinstance   (response, ToolError):
+            if isinstance(response, ToolError):
                 return response
 
             # Create and return a folder instance from the response
@@ -602,10 +618,17 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
             }
 
             # return await graphql_client.execute_async(query=query, variables=variables)
-            docs: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=query, variables=variables)
+            docs: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger,
+                    method_name,
+                    graphql_client,
+                    query=query,
+                    variables=variables,
+                )
+            )
             # handling exception
-            if isinstance   (docs, ToolError):
+            if isinstance(docs, ToolError):
                 return docs
 
             docslist = docs["data"]["folder"]["containedDocuments"]["documents"]
@@ -637,7 +660,7 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
         identifier: str,
     ) -> Union[Folder, ToolError]:
         """
- 
+
         Description:
         Get an existing folder in the content repository information given a folder id
 
@@ -666,16 +689,22 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
             # Prepare variables for the GraphQL query
             variables = {
                 "object_store_name": graphql_client.object_store,  # Always use the default object store
-                "folder_id": identifier
+                "folder_id": identifier,
             }
-
 
             # Execute the GraphQL query
             logger.info(f"{method_name}: Executing folder detail retrieval")
             # Execute the GraphQL mutation
-            response: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                logger, method_name, graphql_client, query=FOLDER_QUERY, variables=variables)
-            if isinstance   (response, ToolError):
+            response: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger,
+                    method_name,
+                    graphql_client,
+                    query=FOLDER_QUERY,
+                    variables=variables,
+                )
+            )
+            if isinstance(response, ToolError):
                 return response
 
             # Check for empty or invalid response
@@ -690,13 +719,15 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                     suggestions=[
                         "Verify the folder object exists",
                     ],
-                )    
+                )
 
             # Create and return a folder instance from the response
             return Folder.create_an_instance(
                 graphQL_changed_object_dict=response["data"]["folder"],
                 class_identifier=(
-                    response["data"]["folder"]["className"] if response["data"]["folder"]["className"] else DEFAULT_FOLDER_CLASS
+                    response["data"]["folder"]["className"]
+                    if response["data"]["folder"]["className"]
+                    else DEFAULT_FOLDER_CLASS
                 ),
             )
 

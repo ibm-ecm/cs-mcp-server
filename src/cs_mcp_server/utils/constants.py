@@ -297,3 +297,51 @@ INITIAL_MAJOR_VERSION = 0
 
 INITIAL_MINOR_VERSION = 1
 """Initial minor version number for new documents."""
+
+
+# ============================================================================
+# RESOURCE FOLDER AND PREFIX CONSTANTS
+# ============================================================================
+# Used for dynamic resource registration and validation
+
+# Resource folder prefixes for different server types
+RESOURCE_PREFIX_CORE = None  # Core accepts all files (no prefix requirement)
+"""Prefix requirement for core server resources (None = no requirement)."""
+
+RESOURCE_PREFIX_AI_DOCUMENT_INSIGHT = ["DI_"]
+"""Required prefix for AI Document Insight server resources."""
+
+RESOURCE_PREFIX_LEGAL_HOLD = ["LH_"]
+"""Required prefix for Legal Hold server resources."""
+
+RESOURCE_PREFIX_PROPERTY_EXTRACTION_CLASSIFICATION = ["CL_", "PE_"]
+"""Required prefixes for Property Extraction and Classification server resources."""
+
+RESOURCE_PREFIX_FULL = None  # Full server accepts all files
+"""Prefix requirement for full server resources (None = no requirement)."""
+
+# Default resource folder paths for different server types
+DEFAULT_RESOURCE_FOLDER_CORE = "/resources"
+"""Default resource folder path for core server."""
+
+DEFAULT_RESOURCE_FOLDER_AI_DOCUMENT_INSIGHT = "/resources/AIDocumentInsight"
+"""Default resource folder path for AI Document Insight server."""
+
+DEFAULT_RESOURCE_FOLDER_LEGAL_HOLD = "/resources/LegalHold"
+"""Default resource folder path for Legal Hold server."""
+
+DEFAULT_RESOURCE_FOLDER_PROPERTY_EXTRACTION_CLASSIFICATION = "/resources/Classification"
+"""Default resource folder path for Property Extraction and Classification server."""
+
+DEFAULT_RESOURCE_FOLDER_FULL = "/resources"
+"""Default resource folder path for full server."""
+
+# Resource validation modes
+RESOURCE_VALIDATION_STRICT = "strict"
+"""Strict validation mode - fail startup on prefix mismatch."""
+
+RESOURCE_VALIDATION_WARN = "warn"
+"""Warn validation mode - log warning and skip mismatched files (default)."""
+
+RESOURCE_VALIDATION_OFF = "off"
+"""Validation off - no prefix validation."""

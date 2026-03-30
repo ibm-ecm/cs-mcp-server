@@ -22,7 +22,7 @@ Resources are read-only and provide context to language models without executing
 import logging
 from typing import Any, Dict
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from mcp.types import Annotations
 
 from cs_mcp_server.client.graphql_client import GraphQLClient

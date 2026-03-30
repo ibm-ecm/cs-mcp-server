@@ -23,7 +23,7 @@ document classes.
 import logging
 from typing import Any, List, Union
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 from cs_mcp_server.cache.metadata import MetadataCache
 from cs_mcp_server.cache.metadata_loader import get_root_class_description_tool

@@ -20,11 +20,14 @@ from cs_mcp_server.utils.constants import (
     TRACEBACK_LIMIT,
 )
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
-from cs_mcp_server.client.graphql_client import GraphQLClient, graphql_client_execute_async_wrapper
+from cs_mcp_server.client.graphql_client import (
+    GraphQLClient,
+    graphql_client_execute_async_wrapper,
+)
 from cs_mcp_server.utils import ToolError
-from cs_mcp_server.utils.model.core import  CustomObject
+from cs_mcp_server.utils.model.core import CustomObject
 
 
 # Logger for this module
@@ -41,7 +44,7 @@ def register_custom_object_tools(mcp: FastMCP, graphql_client: GraphQLClient) ->
         """
         Retrieves an CustomObject associated with an customObject id.
 
-        This tool fetches custom object metadata. 
+        This tool fetches custom object metadata.
 
         :param custom_object_id: The customObject ID to retrieve information for.
 
@@ -77,9 +80,16 @@ def register_custom_object_tools(mcp: FastMCP, graphql_client: GraphQLClient) ->
         }
 
         try:
-            result: Union [ToolError, Dict[str, Any]] = await graphql_client_execute_async_wrapper (
-                    logger, method_name, graphql_client, query=A_CUSTOM_OBJECT_QUERY, variables=variables)
-            if isinstance   (result, ToolError):
+            result: Union[ToolError, Dict[str, Any]] = (
+                await graphql_client_execute_async_wrapper(
+                    logger,
+                    method_name,
+                    graphql_client,
+                    query=A_CUSTOM_OBJECT_QUERY,
+                    variables=variables,
+                )
+            )
+            if isinstance(result, ToolError):
                 return result
 
             # Check for no result returned before checking if there is "errors" key in the result dictionary
@@ -116,8 +126,6 @@ def register_custom_object_tools(mcp: FastMCP, graphql_client: GraphQLClient) ->
                     ],
                 )
 
-
- 
             a_custom_object = CustomObject.create_an_instance(
                 graphQL_changed_object_dict=result["data"]["customObject"],
                 class_name=result["data"]["customObject"]["className"],
