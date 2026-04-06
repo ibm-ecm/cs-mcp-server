@@ -7,7 +7,7 @@ The IBM Content Services MCP Server provides a standardized interface that enabl
 - **Core Server**: Comprehensive document and content management operations
 - **Property Extraction and Classification Server**: Document analysis for property extraction and classification
 - **Legal Hold Server**: Legal hold management
-- **AI Document Insight Server (Preview)**: Uses virtual table capabilities for Content Assistant vector search combined with property/metadata search, along with document summarization, comparison, and Q&A
+- **AI Document Insight Server**: Uses virtual table capabilities for Content Assistant vector search combined with property/metadata search, along with document summarization, comparison, and Q&A
 
 Each server can be deployed independently or in combination to support your specific use cases.
 
@@ -46,7 +46,7 @@ Each server can be deployed independently or in combination to support your spec
 - Placing documents and objects under hold
 - Tracking held objects
 
-### AI Document Insight Server (`ai-document-insight-cs-mcp-server`) - Preview
+### AI Document Insight Server (`ai-document-insight-cs-mcp-server`)
 
 **Purpose**: Uses virtual table capabilities for Content Assistant vector search combined with property/metadata search, along with document summarization, comparison, and Q&A
 
